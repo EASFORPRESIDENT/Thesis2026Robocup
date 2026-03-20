@@ -92,7 +92,7 @@ Build HFO environment
 cd HFO
 mkdir build && cd build
 cmake -DCMAKE_BUILD_TYPE=RelwithDebInfo -DBUILD_SOCCERWINDOW=False ..
-make -j4
+make -j"$(nproc)"
 make install
 )
 ```
