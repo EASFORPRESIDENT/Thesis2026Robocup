@@ -37,7 +37,7 @@ bld/
 # Build results on 'Bin' directories
 **/[Bb]in/*
 
-!HFO/bin/
+
 !HFO/bin/teams/
 !HFO/bin/teams/base/
 !HFO/bin/teams/base/config/
