@@ -17,7 +17,7 @@ In VS Code, in ```Thesis2026Robocup``` folder:
 * Choose ```Thesis2026Robocup/.venv/bin/python```
 
 ## Run Dummy agent
-In ```Thesis2026Robocup```, run:
+In ```Thesis2026Robocup/```, run:
 ```
 source .venv/bin/activate
 python Agents/DummyAgent/DummyAgent.py
