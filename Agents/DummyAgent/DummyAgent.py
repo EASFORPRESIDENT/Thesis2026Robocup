@@ -5,7 +5,8 @@ import random
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-HFO_ROOT = PROJECT_ROOT.parent / "HFO"
+
+HFO_ROOT = PROJECT_ROOT / "HFO"
 FORMATIONS_PATH = HFO_ROOT / "bin/teams/base/config/formations-dt"
 
 def main():
@@ -18,6 +19,7 @@ def main():
         'base_left', 
         False
     )
+    
 
     my_unum = env.getUnum()
     teammate_unums = [u for u in range(1, 12) if u != my_unum]

@@ -118,7 +118,7 @@ def main(args):
       %(serverCommand + serverOptions)
     if not args.headless:
       monitorCommand = os.path.join(binary_dir, MONITOR_BIN)
-      monitorOptions = ' --connect --port=%i'%(server_port)
+      monitorOptions = ' --connect --port=%i --client-version 4'%(server_port)
       launch(monitorCommand + monitorOptions, name='monitor')
     # Launch the Trainer
     from Trainer import Trainer
