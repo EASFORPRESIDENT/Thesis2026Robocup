@@ -26,6 +26,8 @@ cmake \
 git \
 python3 \
 python3-pip \
+python3-numpy \
+python-is-python3 \
 flex \
 bison \
 zlib1g-dev \
