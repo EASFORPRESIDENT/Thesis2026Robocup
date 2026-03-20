@@ -47,7 +47,7 @@ Clone the repo
 
 `git clone https://github.com/EASFORPRESIDENT/Thesis2026Robocup.git`
 
-## 2
+## step 2
 ```
 mkdir -p ~/local/bin ~/local/lib ~/local/include
 
@@ -61,7 +61,7 @@ source ~/.profile
 source ~/.bashrc
 ```
 
-## Step 2
+## Step 3
 OBS! All steps from here is executed from the `Thesis2026Robocup` dir.
 Build librcsc
 ```
@@ -74,7 +74,7 @@ make -j"$(nproc)"
 make install
 )
 ```
-## 3
+## 4
 Build Soccerwindow
 ```
 (
@@ -85,7 +85,7 @@ make -j"$(nproc)"
 make install
 )
 ```
-## 4
+## 5
 Build HFO environment
 ```
 (
@@ -99,7 +99,7 @@ make install
 
 
 
-## Step 3
+## Step 6
 Link to files.
 
 `ln -sf ~/local/bin/sswindow2 $(pwd)/HFO/bin/soccerwindow2`
