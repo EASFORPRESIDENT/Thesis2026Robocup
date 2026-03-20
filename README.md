@@ -111,6 +111,13 @@ grep -q 'HFO/lib' ~/.bashrc || \
 source ~/.bashrc
 ```
 
+## Step 7
+Test if it works
+```
+
+./HFO/example/passing_agents.sh
+```
+
 
 
 
