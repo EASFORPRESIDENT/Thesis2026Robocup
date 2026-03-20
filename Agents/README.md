@@ -3,6 +3,7 @@
 ## HFO interpreter for VS Code
 
 ```
+apt install python3.12-venv
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
