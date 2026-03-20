@@ -10,7 +10,14 @@ python -m pip install numpy
 python -m pip install /absolute/path/to/HFO
 ```
 
-In VS Code, in Thesis2026Robocup folder:
+In VS Code, in ```Thesis2026Robocup``` folder:
 * Press ```Ctrl+Shift+P```
 * Run Python: Select Interpreter
 * Choose ```Thesis2026Robocup/.venv/bin/python```
+
+## Run Dummy agent
+In ```Thesis2026Robocup```, run:
+```
+source .venv/bin/activate
+python Agents/DummyAgent/DummyAgent.py
+```
