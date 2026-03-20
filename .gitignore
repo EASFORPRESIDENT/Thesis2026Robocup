@@ -41,7 +41,6 @@ bld/
 !HFO/bin/teams/
 !HFO/bin/teams/base/
 !HFO/bin/teams/base/config/
-!HFO/bin/teams/base/config/**
 
 !HFO/bin/Communicator.py
 !HFO/bin/HFO
