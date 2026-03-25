@@ -36,6 +36,7 @@ def main():
     print("Choosen Q = ")
     print(chosen_q)
     # End Testing Scetion
+    print(hfo.ACTION_STRINGS)
 
     env = hfo.HFOEnvironment()
     env.connectToServer(
@@ -50,15 +51,17 @@ def main():
 
     my_unum = env.getUnum()
     teammate_unums = [u for u in range(1, 12) if u != my_unum]
+  
     
     for episode in itertools.count():
         status = hfo.IN_GAME
         while status == hfo.IN_GAME:
             state = env.getState()
+            print(state.size)
 
             if state[5] == 1:
                 if random.random() < 0.5:
-                    env.act(hfo.SHOOT)
+                    env.act(hfo.MOVE)
                 else:
                     #env.act(hfo.PASS, random.choice(teammate_unums))
                     env.act(hfo.DRIBBLE)
