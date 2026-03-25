@@ -19,9 +19,11 @@ In VS Code, in `Thesis2026Robocup/` folder:
 
 ## Run Dummy agent
 In `Thesis2026Robocup/`, first start the server by running:
-´´´
+
+```
+source .venv/bin/activate
 HFO/./bin/HFO --offense-agents=1 --defense-npcs=1 --headless
-´´´
+```
 Open another terminal and activate the agent by running:
 ```
 source .venv/bin/activate
