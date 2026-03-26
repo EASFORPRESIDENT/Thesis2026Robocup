@@ -34,6 +34,8 @@ make -j"$(nproc)"
 make install
 )
 
+ln -sf ~/local/bin/sswindow2 $(pwd)/HFO/bin/soccerwindow2
+
 grep -q 'HFO/lib' ~/.bashrc || \
   echo 'export LD_LIBRARY_PATH="$(pwd)/HFO/lib:$LD_LIBRARY_PATH"' >> ~/.bashrc
 
