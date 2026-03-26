@@ -20,8 +20,8 @@ class AgentNetwork(nn.Module):
         )
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
-        # obs: [batch, n_agents, obs_dim]
-        return self.net(obs)  # [batch, n_agents, n_actions]
+        # obs: [n_sampels, n_agents, obs_dim]
+        return self.net(obs)  # [n_sampels, n_agents, n_actions]
 
 
 class RecurrentAgentNetwork(nn.Module):
@@ -36,14 +36,17 @@ class RecurrentAgentNetwork(nn.Module):
 
     def forward(self, obs: torch.Tensor, hidden: torch.Tensor):
         """
-        obs:    [batch * n_agents, obs_dim]
-        hidden: [batch * n_agents, hidden_dim]
+        obs:    [n_samples * n_agents, obs_dim]
+        hidden: [n_samples * n_agents, hidden_dim]
         """
+
+
         x = F.relu(self.fc1(obs))
-        h = self.gru(x, hidden)
-        q = self.fc2(h)
-        return q, h
-    
+        hidden = self.gru(x, hidden)
+        q_vals = self.fc2(hidden)
+        return q_vals, hidden
+
+
     
 class QMixer(nn.Module):
     """
@@ -69,9 +72,9 @@ class QMixer(nn.Module):
 
     def forward(self, agent_qs: torch.Tensor, states: torch.Tensor) -> torch.Tensor:
         """
-        agent_qs: [batch, n_agents]
-        states:   [batch, state_dim]
-        returns:  [batch, 1]
+        agent_qs: [n_sampels, n_agents]
+        states:   [n_sampels, state_dim]
+        returns:  [n_sampels, 1]
         """
         batch_size = agent_qs.size(0)
 
@@ -83,22 +86,19 @@ class QMixer(nn.Module):
         b1 = b1.view(batch_size, 1, self.mixing_hidden_dim)
 
         agent_qs = agent_qs.view(batch_size, 1, self.n_agents)
-        hidden = F.elu(torch.bmm(agent_qs, w1) + b1)  # [batch, 1, mixing_hidden_dim]
+        hidden = F.elu(torch.bmm(agent_qs, w1) + b1)  # [n_sampels, 1, mixing_hidden_dim]
 
         # Second layer
-        w2 = torch.abs(self.hyper_w2(states))  # [batch, mixing_hidden_dim]
+        w2 = torch.abs(self.hyper_w2(states))  # [n_sampels, mixing_hidden_dim]
         w2 = w2.view(batch_size, self.mixing_hidden_dim, 1)
 
         b2 = self.hyper_b2(states).view(batch_size, 1, 1)
 
-        q_tot = torch.bmm(hidden, w2) + b2  # [batch, 1, 1]
+        q_tot = torch.bmm(hidden, w2) + b2  # [n_sampels, 1, 1]
         return q_tot.view(batch_size, 1)
 
 
 class QMIX(nn.Module):
-    """
-    Full QMIX model = shared agent network + mixer.
-    """
     def __init__(
         self,
         obs_dim: int,
@@ -111,27 +111,50 @@ class QMIX(nn.Module):
         super().__init__()
         self.n_agents = n_agents
         self.n_actions = n_actions
+        self.agent_hidden_dim = agent_hidden_dim
 
-        # Usually parameter-shared across agents
-        self.agent_net = AgentNetwork(obs_dim, agent_hidden_dim, n_actions)
+        # Use recurrent agent net instead
+        self.agent_net = RecurrentAgentNetwork(obs_dim, agent_hidden_dim, n_actions)
         self.mixer = QMixer(n_agents, state_dim, mixing_hidden_dim)
 
-    def forward(self, obs: torch.Tensor, states: torch.Tensor, actions: torch.Tensor):
+    def init_hidden(self, batch_size: int, device=None):
+        # one hidden state per agent in the n_sampels
+        return self.agent_net.init_hidden(batch_size * self.n_agents, device=device)
+
+    def forward(
+        self,
+        obs: torch.Tensor,
+        states: torch.Tensor,
+        actions: torch.Tensor,
+        hidden: torch.Tensor
+    ):
         """
-        obs:     [batch, n_agents, obs_dim]
-        states:  [batch, state_dim]
-        actions: [batch, n_agents]  integer action indices
+        obs:     [n_sampels, n_agents, obs_dim]
+        states:  [n_sampels, state_dim]
+        actions: [n_sampels, n_agents]
+        hidden:  [n_sampels * n_agents, hidden_dim]
 
         returns:
-            q_tot: [batch, 1]
-            all_q: [batch, n_agents, n_actions]
-            chosen_q: [batch, n_agents]
+            q_tot:      [n_sampels, 1]
+            all_q:      [n_sampels, n_agents, n_actions]
+            chosen_q:   [n_sampels, n_agents]
+            new_hidden: [n_sampels * n_agents, hidden_dim]
         """
-        all_q = self.agent_net(obs)  # [batch, n_agents, n_actions]
+        batch_size = obs.size(0)
 
-        # Gather Q-values for chosen actions
+        # Flatten agent dimension for recurrent net
+        obs_flat = obs.reshape(batch_size * self.n_agents, -1)
+
+        # Recurrent agent forward
+        all_q_flat, new_hidden = self.agent_net(obs_flat, hidden)
+
+        # Reshape back to [n_sampels, n_agents, n_actions]
+        all_q = all_q_flat.view(batch_size, self.n_agents, self.n_actions)
+
+        # Pick Q-values for chosen actions
         chosen_q = torch.gather(all_q, dim=2, index=actions.unsqueeze(-1)).squeeze(-1)
-        # [batch, n_agents]
 
-        q_tot = self.mixer(chosen_q, states)  # [batch, 1]
-        return q_tot, all_q, chosen_q
+        # Mix into total Q
+        q_tot = self.mixer(chosen_q, states)
+
+        return q_tot, all_q, chosen_q, new_hidden

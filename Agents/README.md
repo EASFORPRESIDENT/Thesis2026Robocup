@@ -17,7 +17,7 @@ In VS Code, in `Thesis2026Robocup/` folder:
 * Run Python: Select Interpreter
 * Choose `Thesis2026Robocup/.venv/bin/python`
 
-## Run Dummy agent
+## Run One Dummy agent
 In `Thesis2026Robocup/`, first start the server by running:
 
 ```
@@ -29,3 +29,9 @@ Open another terminal and activate the agent by running:
 source .venv/bin/activate
 python Agents/DummyAgent/DummyAgent.py
 ```
+
+## Run Multiple
+```
+./run_sim.sh Nr_Dummyagents Nr_defender_NPCs
+```
+
