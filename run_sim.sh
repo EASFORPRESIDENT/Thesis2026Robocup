@@ -42,7 +42,7 @@ sleep 2
 
 
 # Start one DummyAgent terminal per offensive agent
-for ((i=1; i<=NR_OFFENSIVE_AGENTS; i++)); do
+for ((i=1; i<=1; i++)); do
     gnome-terminal -- bash -c "
     cd '$PROJECT_DIR' || exit 1
     source .venv/bin/activate
