@@ -19,29 +19,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 HFO_ROOT = PROJECT_ROOT / "HFO"
 FORMATIONS_PATH = HFO_ROOT / "bin/teams/base/config/formations-dt"
 
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--agent-id", type=int, required=True)
-    parser.add_argument("--weights-path", type=str, required=True)
-    parser.add_argument("--obs-dim", type=int, required=True)
-    parser.add_argument("--n-actions", type=int, required=True)
-    
-    return parser.parse_args()
 
-def main():
-    args = parse_args()
+
+def run_agent(agent_id,agent_network,obs_dim,n_actions):
+    #args = parse_args()
 
     hidden_dim = 64      # samma som i träningen
-
-    agent_net = RecurrentAgentNetwork(args.obs_dim, hidden_dim, args.n_actions)
-   
-    if args.weight_path != None:
-        state_dict = torch.load(args.weights_path, map_location="cpu")
-        agent_net.load_state_dict(state_dict)
-        agent_net.eval()
-
-    else:
-        print("Läs ifrån pipe eller shared memmory")
 
     env = hfo.HFOEnvironment()
     env.connectToServer(
@@ -53,8 +36,8 @@ def main():
         False
     )
     
-
     my_unum = env.getUnum()
+    print("AGENT:{args.agent_id} has connected, Unifrom number:{my_unum}")
     teammate_unums = [u for u in range(1, 12) if u != my_unum]
   
     
@@ -82,4 +65,4 @@ def main():
             break
 
 if __name__ == "__main__":
-    main()
+    run_agent()
