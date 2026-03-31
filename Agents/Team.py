@@ -22,6 +22,9 @@ def parse_args():
     
     parser.add_argument("--n-D_agents", type=int, default=2,
                         help="Number of defensive agents")
+    
+    parser.add_argument("--Training", type=bool, default=False,
+                        help="Set to True if you want to train a model")
 
     #parser.add_argument("--port", type=int, default=6000, help="HFO server port")
 
@@ -35,7 +38,10 @@ def main():
     STATE_DIM = OBS_DIM*args.n_O_agents #kolla upp om kan använda motståndare obs också
     N_AGENTS= args.n_O_agents
     N_ACTIONS= 10 + (args.n_O_agents-1)
-    WEIGHTS_PATH = PROJECT_ROOT / f"Agents/Agent/{args.n_O_agents}v{args.n_D_agents}.pt"
+    if args.Training == True:
+        WEIGHTS_PATH = PROJECT_ROOT / f"Agents/Agent/{args.n_O_agents}v{args.n_D_agents}.pt"
+    else:
+        WEIGHTS_PATH == None
 
     model = QMIX(OBS_DIM,STATE_DIM,N_AGENTS,N_ACTIONS)
     torch.save(model.agent_net.state_dict(), WEIGHTS_PATH)
