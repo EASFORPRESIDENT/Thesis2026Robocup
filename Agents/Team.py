@@ -1,3 +1,4 @@
+from Library.ReplayBuffer import ReplayBuffer
 import hfo
 import itertools
 import random
@@ -58,15 +59,33 @@ def main():
     #torch.save(model.agent_net.state_dict(), WEIGHTS_PATH) #After training complete
 
     processes = []
+    queue = mp.Queue()
+    barrier = mp.Barrier(N_AGENTS + 1) # +1 for main process
 
     for i in range(N_AGENTS):
-        p = mp.Process(target=run_agent, args=(i,agent_net,OBS_DIM,N_ACTIONS,Unums))
+        p = mp.Process(target=run_agent, args=(i,agent_net,queue,barrier,OBS_DIM,N_ACTIONS,Unums))
         p.start()
         processes.append(p)
         time.sleep(3) #Need this to avoid race condition
 
+    training = True
+    replay_buffer = ReplayBuffer(num_of_episodes=1000)
+    
+    while training:
+        barrier.wait() # Wait for all agents to finish episode
+        for i in range(N_AGENTS):
+            sub_episode = queue.get()
+            replay_buffer.extend_episode(sub_episode)
+        replay_buffer.end_episode()
+        batch = replay_buffer.get_batch(num_of_samples=32, sample_size=10) #Get batch of transitions for training
+        
+        #Train model here using batch of transitions
+
+        barrier.wait() # Signal agents to start next episode
+
+
     for p in processes:
-        p.join()
+        p.join() #Wait for all processes to finish before exiting main
 
 if __name__ == "__main__":
     mp.set_start_method("spawn", force=True)
