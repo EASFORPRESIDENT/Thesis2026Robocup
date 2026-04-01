@@ -2,8 +2,8 @@ from collections import deque
 import random
 
 class Episode(list):
-    def save_transition(self, observation, action, timestep: int, agent_id: int, done):
-        transition = (observation, action, timestep, agent_id, done)
+    def save_transition(self, observation, action, reward, timestep: int, agent_id: int, done):
+        transition = (observation, action, reward, timestep, agent_id, done)
         self.append(transition)
 
     def done(self):
