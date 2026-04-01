@@ -18,10 +18,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 def parse_args():
     parser = argparse.ArgumentParser(description="Team controller")
 
-    parser.add_argument("--n-O_agents", type=int, default=2,
+    parser.add_argument("--n-O_agents", type=int, default=6,
                         help="Number of offensive agents")
     
-    parser.add_argument("--n-D_agents", type=int, default=2,
+    parser.add_argument("--n-D_agents", type=int, default=6,
                         help="Number of defensive agents")
     
     parser.add_argument("--Training", type=bool, default=True,
@@ -42,6 +42,7 @@ def main():
     N_ACTIONS = 10 + (args.n_O_agents-1)
     HIDDEN_DIM = 64
     WEIGHTS_PATH = PROJECT_ROOT / f"Agents/Agent/{args.n_O_agents}v{args.n_D_agents}.pt"
+    Unums = torch.empty(N_AGENTS, dtype=torch.int16)
 
     if args.Training == True:
         model = QMIX(OBS_DIM,STATE_DIM,N_AGENTS,N_ACTIONS)
@@ -52,14 +53,14 @@ def main():
         agent_net.load_state_dict(state_dict)
         agent_net.eval()
     
-
+    Unums.share_memory_()
     agent_net.share_memory()
     #torch.save(model.agent_net.state_dict(), WEIGHTS_PATH) #After training complete
 
     processes = []
 
     for i in range(N_AGENTS):
-        p = mp.Process(target=run_agent, args=(i,agent_net,OBS_DIM,N_ACTIONS))
+        p = mp.Process(target=run_agent, args=(i,agent_net,OBS_DIM,N_ACTIONS,Unums))
         p.start()
         processes.append(p)
         time.sleep(3) #Need this to avoid race condition
