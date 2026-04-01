@@ -6,6 +6,9 @@ class Episode(list):
         transition = (observation, action, timestep, agent_id, done)
         self.append(transition)
 
+    def reset(self):
+        self.clear()
+
 class ReplayBuffer:
     def __init__(self, num_of_episodes: int):
         self.buffer = deque(maxlen=num_of_episodes)
