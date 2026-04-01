@@ -6,6 +6,9 @@ class Episode(list):
         transition = (observation, action, timestep, agent_id, done)
         self.append(transition)
 
+    def done(self):
+        self[-1] = self[-1][:-1] + (True,) # Set done=True for last transition
+
     def reset(self):
         self.clear()
 
