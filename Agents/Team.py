@@ -1,4 +1,5 @@
-from Library.ReplayBuffer import ReplayBuffer
+import os
+import sys
 import hfo
 import itertools
 import random
@@ -6,23 +7,23 @@ import torch
 from pathlib import Path
 from Qmix.Qmix_base import QMIX,RecurrentAgentNetwork
 import torch.multiprocessing as mp
-import sys
 import time
 import argparse
 from Agent.Agent import run_agent
 
-
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from Library.ReplayBuffer import ReplayBuffer
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Team controller")
 
-    parser.add_argument("--n-O_agents", type=int, default=6,
+    parser.add_argument("--n-O_agents", type=int, default=1,
                         help="Number of offensive agents")
     
-    parser.add_argument("--n-D_agents", type=int, default=6,
+    parser.add_argument("--n-D_agents", type=int, default=1,
                         help="Number of defensive agents")
     
     parser.add_argument("--Training", type=bool, default=True,
@@ -37,7 +38,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    OBS_DIM = 10 + 6*(args.n_O_agents-1) + 3*args.n_D_agents
+    OBS_DIM = 10 + 6*(args.n_O_agents-1) + 3*args.n_D_agents + 2
     STATE_DIM = OBS_DIM*args.n_O_agents #kolla upp om kan använda motståndare obs också
     N_AGENTS = args.n_O_agents
     N_ACTIONS = 10 + (args.n_O_agents-1)
@@ -59,7 +60,7 @@ def main():
     #torch.save(model.agent_net.state_dict(), WEIGHTS_PATH) #After training complete
 
     processes = []
-    queue = mp.Queue()
+    queue = mp.Queue() #Fel typ? Kan inte köra queue.save_transition(args)
     barrier = mp.Barrier(N_AGENTS + 1) # +1 for main process
 
     for i in range(N_AGENTS):
