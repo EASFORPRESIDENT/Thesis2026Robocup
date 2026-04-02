@@ -41,10 +41,11 @@ def main():
     OBS_DIM = 10 + 6*(args.n_O_agents-1) + 3*args.n_D_agents + 2
     STATE_DIM = OBS_DIM*args.n_O_agents #kolla upp om kan använda motståndare obs också
     N_AGENTS = args.n_O_agents
-    N_ACTIONS = 10 + (args.n_O_agents-1)
+    N_ACTIONS = 10 + (args.n_O_agents-1) + (args.n_D_agents) 
     HIDDEN_DIM = 64
     WEIGHTS_PATH = PROJECT_ROOT / f"Agents/Agent/{args.n_O_agents}v{args.n_D_agents}.pt"
     Unums = torch.empty(N_AGENTS, dtype=torch.int16)
+    training = args.Training
 
     if args.Training == True:
         model = QMIX(OBS_DIM,STATE_DIM,N_AGENTS,N_ACTIONS)
@@ -60,29 +61,34 @@ def main():
     #torch.save(model.agent_net.state_dict(), WEIGHTS_PATH) #After training complete
 
     processes = []
-    queue = mp.Queue() #Fel typ? Kan inte köra queue.save_transition(args)
-    barrier = mp.Barrier(N_AGENTS + 1) # +1 for main process
+    queue = mp.Queue()
+
+    if training:
+        barrier = mp.Barrier(N_AGENTS + 1) # +1 for main process
+    
 
     for i in range(N_AGENTS):
-        p = mp.Process(target=run_agent, args=(i,agent_net,queue,barrier,OBS_DIM,N_ACTIONS,Unums))
+        p = mp.Process(target=run_agent, args=(i,agent_net,queue,barrier,training,N_ACTIONS,Unums))
         p.start()
         processes.append(p)
         time.sleep(3) #Need this to avoid race condition
 
-    training = True
-    replay_buffer = ReplayBuffer(num_of_episodes=1000)
     
-    while training:
-        barrier.wait() # Wait for all agents to finish episode
-        for i in range(N_AGENTS):
-            sub_episode = queue.get()
-            replay_buffer.extend_episode(sub_episode)
-        replay_buffer.end_episode()
-        batch = replay_buffer.get_batch(num_of_samples=32, sample_size=10) #Get batch of transitions for training
-        
-        #Train model here using batch of transitions
 
-        barrier.wait() # Signal agents to start next episode
+    if training:
+        replay_buffer = ReplayBuffer(num_of_episodes=1000)
+    
+        while training:
+            barrier.wait() # Wait for all agents to finish episode
+            for i in range(N_AGENTS):
+                sub_episode = queue.get()
+                replay_buffer.extend_episode(sub_episode)
+            replay_buffer.end_episode()
+            batch = replay_buffer.get_batch(num_of_samples=32, sample_size=10) #Get batch of transitions for training
+            
+            #Train model here using batch of transitions
+
+            barrier.wait() # Signal agents to start next episode
 
 
     for p in processes:
