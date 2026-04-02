@@ -42,6 +42,7 @@ def run_agent(agent_id,agent_network,queue,barrier,obs_dim,n_actions,Unums):
         False
     )
     
+    transitions = Episode()
     my_unum = env.getUnum()
     Unums[agent_id] = my_unum
     print(f"AGENT:{agent_id} has connected, Unifrom number:{my_unum}")
@@ -66,13 +67,14 @@ def run_agent(agent_id,agent_network,queue,barrier,obs_dim,n_actions,Unums):
                 action_idx = torch.argmax(q_values, dim=1) #Fixa så att action val och agent val är olika
             
             status = env.step()
-            queue.save_transition(obs,action_idx,t,agent_id,False)
+            transitions.save_transition(obs,action_idx,0,t,agent_id,False)
             t = t+1
 
-        queue.done()
+        transitions.done()
+        queue.put(transitions) #Send episode to main process for backpropagation
         barrier.wait() #Wait untill all agents finish and start backpropagation
         barrier.wait() #Wait untill backpropagation finished
-        queue.reset()
+        transitions.reset()
         print(f"Episode {episode} ended with {env.statusToString(status)}")
 
         if status == hfo.SERVER_DOWN:
