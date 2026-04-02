@@ -7,6 +7,7 @@ from pathlib import Path
 import argparse
 import sys
 from pathlib import Path
+from Library.ReplayBuffer import Episode
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(PROJECT_ROOT))
