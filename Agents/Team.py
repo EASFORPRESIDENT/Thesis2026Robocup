@@ -10,6 +10,7 @@ import torch.multiprocessing as mp
 import time
 import argparse
 from Agent.Agent import run_agent
+from DummyAgent.DummyAgent import run_DummyAgent
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -20,10 +21,10 @@ from Library.replay_buffer import ReplayBuffer
 def parse_args():
     parser = argparse.ArgumentParser(description="Team controller")
 
-    parser.add_argument("--n-O_agents", type=int, default=1,
+    parser.add_argument("--n-O_agents", type=int, default=2,
                         help="Number of offensive agents")
     
-    parser.add_argument("--n-D_agents", type=int, default=1,
+    parser.add_argument("--n-D_agents", type=int, default=0,
                         help="Number of defensive agents")
     
     parser.add_argument("--Training", type=bool, default=True,
@@ -41,7 +42,7 @@ def main():
     OBS_DIM = 10 + 6*(args.n_O_agents-1) + 3*args.n_D_agents + 2
     STATE_DIM = OBS_DIM*args.n_O_agents #kolla upp om kan använda motståndare obs också
     N_AGENTS = args.n_O_agents
-    N_ACTIONS = 10 + (args.n_O_agents-1) + (args.n_D_agents) 
+    N_ACTIONS = 7 + (args.n_O_agents-1) + (args.n_D_agents) 
     HIDDEN_DIM = 64
     WEIGHTS_PATH = PROJECT_ROOT / f"Agents/Agent/{args.n_O_agents}v{args.n_D_agents}.pt"
     Unums = torch.empty(N_AGENTS, dtype=torch.int16)
@@ -65,10 +66,12 @@ def main():
 
     if training:
         barrier = mp.Barrier(N_AGENTS + 1) # +1 for main process
+        Debug_barrier = mp.Barrier(N_AGENTS) #CAN REMOVE LATER
     
 
     for i in range(N_AGENTS):
-        p = mp.Process(target=run_agent, args=(i,agent_net,queue,barrier,training,N_ACTIONS,Unums))
+        p = mp.Process(target=run_agent, args=(i,agent_net,queue,barrier,training,N_ACTIONS,Unums,Debug_barrier if training else None)) #CAN REMOVE BARRIER LATER
+        #p = mp.Process(target=run_DummyAgent, args=())
         p.start()
         processes.append(p)
         time.sleep(3) #Need this to avoid race condition

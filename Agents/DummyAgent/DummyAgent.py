@@ -1,42 +1,18 @@
 #!/usr/bin/env python3
+import sys
 import hfo
 import itertools
 import random
 import torch
 from pathlib import Path
-from Qmix_base import QMIX
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 HFO_ROOT = PROJECT_ROOT / "HFO"
 FORMATIONS_PATH = HFO_ROOT / "bin/teams/base/config/formations-dt"
 
-def main():
-
-# Testing Section
-    obs_dim=20 
-    state_dim=50
-    n_agents=5
-    n_actions=8
-    model = QMIX(obs_dim,state_dim,n_agents,n_actions)
-
-    # batch_size = 2 #Transitions in this case
-    # obs = torch.rand(batch_size,n_agents,obs_dim) 
-    # print(obs)
-
-    # state = torch.rand(batch_size,50)
-    # print(state)
-    # actions = torch.randint(0,n_actions,(batch_size,n_agents)) # actions taken in the batch
-    # print(actions)
-    # q_tot, all_q, chosen_q = model.forward(obs, state , actions)
-    # print("Q_tot = ")
-    # print(q_tot)
-    # print("All_Q = ")
-    # print(all_q)
-    # print("Choosen Q = ")
-    # print(chosen_q)
-    # End Testing Scetion
-    
+def run_DummyAgent(Debug_barrier=None):
 
     env = hfo.HFOEnvironment()
     env.connectToServer(
@@ -51,24 +27,48 @@ def main():
 
     my_unum = env.getUnum()
     teammate_unums = [u for u in range(1, 12) if u != my_unum]
+    pause = False
   
     
     for episode in itertools.count():
         status = hfo.IN_GAME
+        t = 0
+        c = 0
         while status == hfo.IN_GAME:
             state = env.getState()
-            print(state.size)
+          
+            
 
-            if state[5] == 1:
-                if random.random() < 0.5:
-                    env.act(hfo.MOVE)
-                else:
-                    #env.act(hfo.PASS, random.choice(teammate_unums))
-                    env.act(hfo.DRIBBLE)
+            
+
+            if my_unum == 11:
+                env.act(hfo.REORIENT)
+                
+            
             else:
-                env.act(hfo.MOVE)
+                if state[5] != 1: # Check if any opponent is in marking range
+                    env.act(hfo.GO_TO_BALL)
+                    print("Moving to ball") #Debug print
+                else:
+                    if state[15] != -2: # Check if in possession of the ball
+                        if c < 10:
+                            env.act(hfo.PASS, state[15])
+                            c += 1
+                        else:
+                            env.act(hfo.DRIBBLE)
+                            c=0
+                        print(f"Passing to {state[15]}") #Debug print
+
+
+                    else:
+                        env.act(hfo.DRIBBLE)
+                        print("Dribbling") #Debug print
+                        
+            
+            
             
             status = env.step()
+            t += 1
 
         print(f"Episode {episode} ended with {env.statusToString(status)}")
 
@@ -77,4 +77,4 @@ def main():
             break
 
 if __name__ == "__main__":
-    main()
+    run_DummyAgent()
