@@ -1,5 +1,6 @@
 import os
 import sys
+from Library.learner_utils import collate_batch
 import hfo
 import itertools
 import random
@@ -89,6 +90,8 @@ def main():
             replay_buffer.end_episode()
             batch = replay_buffer.get_batch(num_of_samples=32, sample_size=10) #Get batch of transitions for training
             
+            obs, states, actions = collate_batch(batch)
+
             #Train model here using batch of transitions
 
             barrier.wait() # Signal agents to start next episode
