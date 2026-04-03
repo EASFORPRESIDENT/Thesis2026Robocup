@@ -43,7 +43,7 @@ class ReplayBuffer:
             while len(joint_episode) <= timestep:
                 joint_episode.append({
                     "observations": [None] * num_agents,
-                    "state": [], # Compute with another function
+                    "state": [],
                     "actions": [None] * num_agents,
                     "reward": None,
                     "done": None,
