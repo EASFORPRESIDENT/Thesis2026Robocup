@@ -23,7 +23,7 @@ from Library.learner_utils import collate_batch
 def parse_args():
     parser = argparse.ArgumentParser(description="Team controller")
 
-    parser.add_argument("--n-O_agents", type=int, default=1,
+    parser.add_argument("--n-O_agents", type=int, default=2,
                         help="Number of offensive agents")
     
     parser.add_argument("--n-D_agents", type=int, default=1,
@@ -52,10 +52,16 @@ def main():
     Epsilon = 1.0 #Start value for epsilon-greedy action selection
     epsilon_min = 0.05
     decay_rate = 1e-4
-
+   
+    BURN_IN_TIME_STEPS = 5 #Number of time steps to unroll GRU for during training
+    BOOTSTRAP_TIME_STEPS = 1 #Number of time steps to build target Q-values for during training
+    TRAINING_TIME_STEPS = 4 #Number of time steps to train on during each training iteration
+    SAMPLE_SIZE = BURN_IN_TIME_STEPS + BOOTSTRAP_TIME_STEPS + TRAINING_TIME_STEPS
+    
     if args.Training == True:
         model = QMIX(OBS_DIM,STATE_DIM,N_AGENTS,N_ACTIONS)
         agent_net = model.agent_net
+        mixer_net = model.mixer
         
     else:
         
@@ -74,6 +80,7 @@ def main():
     if training:
         barrier = mp.Barrier(N_AGENTS + 1) # +1 for main process
         Debug_barrier = mp.Barrier(N_AGENTS) #CAN REMOVE LATER
+        replay_buffer = ReplayBuffer(num_of_episodes=1000)
     
 
     for i in range(N_AGENTS):
@@ -83,27 +90,45 @@ def main():
         processes.append(p)
         time.sleep(3) #Need this to avoid race condition
 
-    
-
-    if training:
-        replay_buffer = ReplayBuffer(num_of_episodes=1000)
        
     
-        while training:
-            barrier.wait() # Wait for all agents to finish episode
-            for i in range(N_AGENTS):
-                sub_episode = queue.get()
-                replay_buffer.extend_episode(sub_episode)
-            replay_buffer.end_episode()
-            batch = replay_buffer.get_batch(num_of_samples=32, sample_size=10) #Get batch of transitions for training
-            
-            obs, states, actions = collate_batch(batch)
-            print(f"obs.shape: {obs.shape}, states.shape: {states.shape}, actions.shape: {actions.shape}")
-            #Train model here using batch of transitions
+    while training:
+        barrier.wait() # Wait for all agents to finish episode
+        for i in range(N_AGENTS):
+            sub_episode = queue.get()
+            replay_buffer.extend_episode(sub_episode)
+        replay_buffer.end_episode()
+        batch = replay_buffer.get_batch(num_of_samples=32, sample_size=SAMPLE_SIZE) #Get batch of transitions for training
+        
+        obs, states, actions = collate_batch(batch)
+        print(f"obs.shape: {obs.shape}, states.shape: {states.shape}, actions.shape: {actions.shape}")
+        #Train model here using batch of transitions
 
-            barrier.wait() # Signal agents to start next episode
-            if Epsilon > epsilon_min:
-                Epsilon -= decay_rate
+        #BURN IN TIME STEPS: Unroll GRU for burn-in time steps to get hidden state
+        with torch.no_grad():
+            hidden = agent_net.init_hidden(len(batch) * N_AGENTS, device=obs.device)
+            q_vals_buffer = []
+
+            for t in range(SAMPLE_SIZE):
+                obs_flat = obs[t].reshape(len(batch) * N_AGENTS, -1)
+                q_values, hidden = agent_net(obs_flat, hidden)
+                print(f"Time step {t}: q_values.shape: {q_values.shape}, hidden.shape: {hidden.shape}")
+                q_values = q_values.reshape(len(batch), N_AGENTS, -1)
+                print(f"Time step {t}: q_values.shape: {q_values.shape}, hidden.shape: {hidden.shape}")
+                q_vals_buffer.append(q_values)
+            
+            for t in range(BURN_IN_TIME_STEPS, SAMPLE_SIZE):
+              
+                agent_qs,_ = torch.max(q_vals_buffer[t], dim=-1)
+
+                q_tot = mixer_net(q_vals_buffer[t-BOOTSTRAP_TIME_STEPS:t], states[t-BOOTSTRAP_TIME_STEPS:t]) # Get target Q-values for bootstrap time steps
+
+        
+
+        if Epsilon > epsilon_min:
+            Epsilon -= decay_rate
+        barrier.wait() # Signal agents to start next episode
+        
 
 
     for p in processes:

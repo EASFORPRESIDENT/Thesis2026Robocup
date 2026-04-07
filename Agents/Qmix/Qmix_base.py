@@ -39,7 +39,7 @@ class RecurrentAgentNetwork(nn.Module):
         obs:    [n_samples * n_agents, obs_dim]
         hidden: [n_samples * n_agents, hidden_dim]
         """
-
+        print(f"obs.shape: {obs.shape}, hidden.shape: {hidden.shape}")
 
         x = F.relu(self.fc1(obs))
         hidden = self.gru(x, hidden)
