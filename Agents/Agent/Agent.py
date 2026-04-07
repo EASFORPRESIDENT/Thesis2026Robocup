@@ -53,6 +53,10 @@ def acting(action_choice ,temmate_pass_unums, opponent_mark_unums, env: hfo.HFOE
         env.act(hfo.MARK_PLAYER, mark_who_unum) 
     else:
         raise ValueError(f"Invalid action choice: {action_choice}")
+    
+
+
+    
 
 
 def get_action_mask(n_actions,n_temates,n_opponents, obs : hfo.HFOEnvironment):
@@ -105,7 +109,17 @@ def get_action_mask(n_actions,n_temates,n_opponents, obs : hfo.HFOEnvironment):
     return temmate_pass_unums, opponent_mark_unums, action_mask
 
 
-def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Unums,Debug_barrier=None): #CAN REMOVE DEBUG_BARRIER LATER
+import random
+
+def select_action(q_values, epsilon):
+    if random.random() < epsilon:
+        return torch.randint(0, q_values.shape[-1], (1,))
+    else:
+        return torch.argmax(q_values, dim=-1)
+
+
+
+def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Epsilon = 0,Debug_barrier=None): #CAN REMOVE DEBUG_BARRIER LATER
     #args = parse_args()
 
     hidden_dim = 64      # samma som i träningen
@@ -122,7 +136,6 @@ def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Unu
     
     transitions = Episode()
     my_unum = env.getUnum()
-    Unums[agent_id] = my_unum
     print(f"AGENT:{agent_id} has connected, Unifrom number:{my_unum}")
     n_teammates = env.getNumTeammates()
     n_opponents = env.getNumOpponents()
@@ -150,14 +163,15 @@ def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Unu
                 masked_q_values = q_values.clone()
                 temmate_pass_unums, opponent_mark_unums,action_mask = get_action_mask(n_actions, n_teammates, n_opponents, obs)
                 masked_q_values = masked_q_values.masked_fill(~action_mask.unsqueeze(0), float('-inf')) # Mask out invalid actions
-                action_idx = torch.argmax(masked_q_values, dim=1) #Fixa så att action val och agent val är olika
+                action_idx = select_action(masked_q_values, Epsilon) # Epsilon-greedy action selection
                 print(f"Agent {agent_id} chose action {action_idx.item()} with q-value {q_values[0][action_idx].item()} \n") #Debug print
                 acting(action_idx ,temmate_pass_unums, opponent_mark_unums, env)
 
             status = env.step()
-            t = t+1
+            
             if training:
                 transitions.save_transition(obs,action_idx,0,t,agent_id,False)
+            t = t+1
 
             
         if training:

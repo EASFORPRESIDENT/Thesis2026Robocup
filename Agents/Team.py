@@ -1,6 +1,5 @@
 import os
 import sys
-from Library.learner_utils import collate_batch
 import hfo
 import itertools
 import random
@@ -17,15 +16,17 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
 from Library.replay_buffer import ReplayBuffer
+from Library.learner_utils import collate_batch
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Team controller")
 
-    parser.add_argument("--n-O_agents", type=int, default=2,
+    parser.add_argument("--n-O_agents", type=int, default=1,
                         help="Number of offensive agents")
     
-    parser.add_argument("--n-D_agents", type=int, default=0,
+    parser.add_argument("--n-D_agents", type=int, default=1,
                         help="Number of defensive agents")
     
     parser.add_argument("--Training", type=bool, default=True,
@@ -46,7 +47,11 @@ def main():
     N_ACTIONS = 7 + (args.n_O_agents-1) + (args.n_D_agents) 
     HIDDEN_DIM = 64
     WEIGHTS_PATH = PROJECT_ROOT / f"Agents/Agent/{args.n_O_agents}v{args.n_D_agents}.pt"
-    Unums = torch.empty(N_AGENTS, dtype=torch.int16)
+
+    Epsilon = 1.0 #Start value for epsilon-greedy action selection
+    epsilon_min = 0.05
+    decay_rate = 1e-4
+
     training = args.Training
 
     if args.Training == True:
@@ -58,7 +63,7 @@ def main():
         agent_net.load_state_dict(state_dict)
         agent_net.eval()
     
-    Unums.share_memory_()
+    
     agent_net.share_memory()
     #torch.save(model.agent_net.state_dict(), WEIGHTS_PATH) #After training complete
 
@@ -71,7 +76,7 @@ def main():
     
 
     for i in range(N_AGENTS):
-        p = mp.Process(target=run_agent, args=(i,agent_net,queue,barrier,training,N_ACTIONS,Unums,Debug_barrier if training else None)) #CAN REMOVE BARRIER LATER
+        p = mp.Process(target=run_agent, args=(i,agent_net,queue,barrier,training,N_ACTIONS,Epsilon,Debug_barrier if training else None)) #CAN REMOVE BARRIER LATER
         #p = mp.Process(target=run_DummyAgent, args=())
         p.start()
         processes.append(p)
@@ -81,6 +86,7 @@ def main():
 
     if training:
         replay_buffer = ReplayBuffer(num_of_episodes=1000)
+       
     
         while training:
             barrier.wait() # Wait for all agents to finish episode
@@ -91,10 +97,12 @@ def main():
             batch = replay_buffer.get_batch(num_of_samples=32, sample_size=10) #Get batch of transitions for training
             
             obs, states, actions = collate_batch(batch)
-
+            print(f"obs.shape: {obs.shape}, states.shape: {states.shape}, actions.shape: {actions.shape}")
             #Train model here using batch of transitions
 
             barrier.wait() # Signal agents to start next episode
+            if Epsilon > epsilon_min:
+                Epsilon -= decay_rate
 
 
     for p in processes:
