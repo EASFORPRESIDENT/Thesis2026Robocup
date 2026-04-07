@@ -163,7 +163,11 @@ def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Eps
                 masked_q_values = q_values.clone()
                 temmate_pass_unums, opponent_mark_unums,action_mask = get_action_mask(n_actions, n_teammates, n_opponents, obs)
                 masked_q_values = masked_q_values.masked_fill(~action_mask.unsqueeze(0), float('-inf')) # Mask out invalid actions
-                action_idx = select_action(masked_q_values, Epsilon) # Epsilon-greedy action selection
+                if training:
+                    action_idx = select_action(masked_q_values, Epsilon) # Epsilon-greedy action selection
+                else:
+                    action_idx = torch.argmax(masked_q_values, dim=-1) # Greedy action selection during evaluation
+                    
                 print(f"Agent {agent_id} chose action {action_idx.item()} with q-value {q_values[0][action_idx].item()} \n") #Debug print
                 acting(action_idx ,temmate_pass_unums, opponent_mark_unums, env)
 

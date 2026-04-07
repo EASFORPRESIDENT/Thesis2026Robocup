@@ -48,16 +48,17 @@ def main():
     HIDDEN_DIM = 64
     WEIGHTS_PATH = PROJECT_ROOT / f"Agents/Agent/{args.n_O_agents}v{args.n_D_agents}.pt"
 
+    training = args.Training
     Epsilon = 1.0 #Start value for epsilon-greedy action selection
     epsilon_min = 0.05
     decay_rate = 1e-4
 
-    training = args.Training
-
     if args.Training == True:
         model = QMIX(OBS_DIM,STATE_DIM,N_AGENTS,N_ACTIONS)
         agent_net = model.agent_net
+        
     else:
+        
         agent_net = RecurrentAgentNetwork(OBS_DIM, HIDDEN_DIM, N_ACTIONS) #Load network from file
         state_dict = torch.load(WEIGHTS_PATH, map_location="cpu")
         agent_net.load_state_dict(state_dict)
