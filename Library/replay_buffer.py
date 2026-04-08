@@ -45,15 +45,14 @@ class ReplayBuffer:
                     "observations": [None] * num_agents,
                     "state": [],
                     "actions": [None] * num_agents,
-                    "reward": None,
-                    "done": None,
+                    "reward": [None] * num_agents,
+                    "done": [None] * num_agents,
                     })
 
             joint_episode[timestep]["observations"][agent_id] = transition["observation"]
             joint_episode[timestep]["actions"][agent_id] = transition["action"]
-
-            joint_episode[timestep]["reward"] = transition["reward"] # Okay for now
-            joint_episode[timestep]["done"] = transition["done"] # Okay for now
+            joint_episode[timestep]["reward"][agent_id] = transition["reward"]
+            joint_episode[timestep]["done"][agent_id] = transition["done"]
 
         for step in joint_episode:
             if any(obs is None for obs in step["observations"]):
