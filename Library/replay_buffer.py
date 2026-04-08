@@ -46,7 +46,7 @@ class ReplayBuffer:
                     "state": [],
                     "actions": [None] * num_agents,
                     "reward": [None] * num_agents,
-                    "done": [None] * num_agents,
+                    "done": None,
                     })
 
             joint_episode[timestep]["observations"][agent_id] = transition["observation"]
