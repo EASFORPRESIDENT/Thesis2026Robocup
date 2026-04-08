@@ -70,7 +70,7 @@ class ReplayBuffer:
         for episode in random_episodes:
             if sample_size >= len(episode):
                 batch.append(list(episode))
-                print(f"WARNING! Episode length {len(episode)} is less than sample size {sample_size}, using entire episode as sample") #Debug print
+                print(f"\033[33mWARNING! Episode length {len(episode)} is less than sample size {sample_size}, using entire episode as sample\033[0m") #Debug print
             else:
                 start = random.randint(0, len(episode) - sample_size)
                 batch.append(list(episode)[start:start + sample_size])
