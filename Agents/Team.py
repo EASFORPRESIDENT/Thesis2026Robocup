@@ -7,6 +7,7 @@ import torch
 from pathlib import Path
 from Qmix.Qmix_base import QMIX,RecurrentAgentNetwork
 import torch.multiprocessing as mp
+import torch.nn.functional as F
 import time
 import argparse
 from Agent.Agent import run_agent
@@ -53,8 +54,9 @@ def main():
     epsilon_min = 0.05
     decay_rate = 1e-4
    
+    NUMBER_OF_SAMPLES = 32
     BURN_IN_TIME_STEPS = 5 #Number of time steps to unroll GRU for during training
-    BOOTSTRAP_TIME_STEPS = 1 #Number of time steps to build target Q-values for during training
+    BOOTSTRAP_TIME_STEPS = 2 #Number of time steps to build target Q-values for during training
     TRAINING_TIME_STEPS = 4 #Number of time steps to train on during each training iteration
     SAMPLE_SIZE = BURN_IN_TIME_STEPS + BOOTSTRAP_TIME_STEPS + TRAINING_TIME_STEPS
     DISCOUNT_FACTOR = 0.99
@@ -99,12 +101,12 @@ def main():
             sub_episode = queue.get()
             replay_buffer.extend_episode(sub_episode)
         replay_buffer.end_episode()
-        batch = replay_buffer.get_batch(num_of_samples=32, sample_size=SAMPLE_SIZE) #Get batch of transitions for training
+        batch = replay_buffer.get_batch(num_of_samples=NUMBER_OF_SAMPLES, sample_size=SAMPLE_SIZE, extra_steps=BOOTSTRAP_TIME_STEPS) #Get batch of transitions for training
         
-        obs, states, actions, rewards = collate_batch(batch)
-        print(f"obs.shape: {obs.shape}, states.shape: {states.shape}, actions.shape: {actions.shape}, rewards.shape: {rewards.shape}")
+        obs, states, actions, rewards , done = collate_batch(batch)
+        rewards = rewards[:, :, 0] # Shared reward for all agents, take reward of first agent in each transition
         #Train model here using batch of transitions
-
+        print("Action batch shape:", actions.shape)
         #BURN IN TIME STEPS: Unroll GRU for burn-in time steps to get hidden state
         with torch.no_grad():
             hidden = agent_net.init_hidden(len(batch) * N_AGENTS, device=obs.device)
@@ -113,17 +115,38 @@ def main():
             for t in range(SAMPLE_SIZE):
                 obs_flat = obs[t].reshape(len(batch) * N_AGENTS, -1)
                 q_values, hidden = agent_net(obs_flat, hidden)
-                print(f"Time step {t}: q_values.shape: {q_values.shape}, hidden.shape: {hidden.shape}")
                 q_values = q_values.reshape(len(batch), N_AGENTS, -1)
-                print(f"Time step {t}: q_values.shape: {q_values.shape}, hidden.shape: {hidden.shape}")
                 q_vals_buffer.append(q_values)
+
+            TD_target_buffer = torch.zeros(TRAINING_TIME_STEPS, NUMBER_OF_SAMPLES, device=obs.device)
+            Q_tot_buffer = torch.zeros(TRAINING_TIME_STEPS, NUMBER_OF_SAMPLES, device=obs.device)
             
             for t in range(BURN_IN_TIME_STEPS, BURN_IN_TIME_STEPS + TRAINING_TIME_STEPS ):
               
-                agent_qs,_ = torch.max(q_vals_buffer[t+1], dim=-1)
-                q_tot = mixer_net(agent_qs, states[t+1]) # Get target Q-values for bootstrap time steps
-                #y_t = 
+                Future_reward = torch.zeros(NUMBER_OF_SAMPLES, device=obs.device)
+                mask = torch.ones(NUMBER_OF_SAMPLES, device=obs.device)
+                
+                for i in range(0, BOOTSTRAP_TIME_STEPS):
+                    Future_reward += (DISCOUNT_FACTOR ** (i)) * rewards[t+i,1] * mask[t+i] # Compute discounted future reward for bootstrap time steps, only use reward of first agent in each transition since shared reward setting
+                    mask = (done.cumsum(dim=0) <= 1).float()
 
+                agent_qs,_ = torch.max(q_vals_buffer[t+BOOTSTRAP_TIME_STEPS], dim=-1)
+                q_tot = mixer_net(agent_qs, states[t+BOOTSTRAP_TIME_STEPS]).squeeze() # Get target Q-values for bootstrap time steps
+                y_t = Future_reward + q_tot*mask[t+BOOTSTRAP_TIME_STEPS] # Compute target Q-values using rewards and discounted future Q-values
+                TD_target_buffer[t-BURN_IN_TIME_STEPS] = y_t  # Compute TD target for training time steps
+
+                chosen_q = torch.gather(q_vals_buffer[t], dim=2, index=actions[t].unsqueeze(-1)).squeeze(-1)
+              
+                Q_tot_buffer[t-BURN_IN_TIME_STEPS] = mixer_net(chosen_q, states[t]).squeeze()
+
+            print("TD target buffer shape:", TD_target_buffer.shape , "Q tot buffer shape:", Q_tot_buffer.shape)
+            TD_mean_per_time_step = TD_target_buffer.mean(dim=0)
+            Q_tot_mean_per_time_step = Q_tot_buffer.mean(dim=0)
+            print("TD mean per time step shape:", TD_mean_per_time_step.shape, "Q tot mean per time step shape:", Q_tot_mean_per_time_step.shape)
+            loss = F.mse_loss(Q_tot_mean_per_time_step, TD_mean_per_time_step)
+            print("Loss:", loss.item())
+        
+            
         
 
         if Epsilon > epsilon_min:

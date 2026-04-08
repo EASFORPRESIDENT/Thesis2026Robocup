@@ -117,7 +117,15 @@ def select_action(q_values, epsilon):
     else:
         return torch.argmax(q_values, dim=-1)
 
-
+def reward_func(status):
+    if status == hfo.GOAL:
+        return 1.0
+    elif status == hfo.CAPTURED_BY_DEFENSE:
+        return -1.0
+    elif status == hfo.OUT_OF_BOUNDS:
+        return -0.5
+    else:
+        return 0.0
 
 def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Epsilon = 0,Debug_barrier=None): #CAN REMOVE DEBUG_BARRIER LATER
     #args = parse_args()
@@ -174,7 +182,7 @@ def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Eps
             status = env.step()
             
             if training:
-                transitions.save_transition(obs,action_idx,0,t,agent_id,False)
+                transitions.save_transition(obs,action_idx,reward_func(status),t,agent_id,False)
             t = t+1
 
             
@@ -185,6 +193,8 @@ def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Eps
             barrier.wait() #Wait untill backpropagation finished
             transitions.reset()
         print(f"Episode {episode} ended with {env.statusToString(status)}")
+
+        
 
         if status == hfo.SERVER_DOWN:
             env.act(hfo.QUIT)

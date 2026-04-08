@@ -48,7 +48,7 @@ def collate_batch(batch):
     rewards = torch.tensor(rewards, dtype=torch.float32)
     rewards = rewards.permute(1, 0, 2)
     done = torch.tensor(done, dtype=torch.bool)
-    done = done.permute(1, 0, 2)
+    done = done.permute(1, 0)
 
     print(rewards.shape)
     print(done.shape)
