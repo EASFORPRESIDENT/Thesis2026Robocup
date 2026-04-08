@@ -53,3 +53,11 @@ def collate_batch(batch):
     print(rewards.shape)
     print(done.shape)
     return obs, states, actions, rewards, done
+
+#optimizer = torch.optim.Adam(qmix.parameters(), lr=3e-4)
+def backprop(qmix, optimizer, loss, max_grad_norm):
+    optimizer.zero_grad(set_to_none=True)
+    loss.backward()
+    grad_norm = torch.nn.utils.clip_grad_norm_(qmix.parameters(), max_grad_norm)
+    optimizer.step()
+    return grad_norm
