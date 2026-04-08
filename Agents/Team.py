@@ -57,6 +57,7 @@ def main():
     BOOTSTRAP_TIME_STEPS = 1 #Number of time steps to build target Q-values for during training
     TRAINING_TIME_STEPS = 4 #Number of time steps to train on during each training iteration
     SAMPLE_SIZE = BURN_IN_TIME_STEPS + BOOTSTRAP_TIME_STEPS + TRAINING_TIME_STEPS
+    DISCOUNT_FACTOR = 0.99
     
     if args.Training == True:
         model = QMIX(OBS_DIM,STATE_DIM,N_AGENTS,N_ACTIONS)
@@ -100,8 +101,8 @@ def main():
         replay_buffer.end_episode()
         batch = replay_buffer.get_batch(num_of_samples=32, sample_size=SAMPLE_SIZE) #Get batch of transitions for training
         
-        obs, states, actions = collate_batch(batch)
-        print(f"obs.shape: {obs.shape}, states.shape: {states.shape}, actions.shape: {actions.shape}")
+        obs, states, actions, rewards = collate_batch(batch)
+        print(f"obs.shape: {obs.shape}, states.shape: {states.shape}, actions.shape: {actions.shape}, rewards.shape: {rewards.shape}")
         #Train model here using batch of transitions
 
         #BURN IN TIME STEPS: Unroll GRU for burn-in time steps to get hidden state
@@ -117,11 +118,11 @@ def main():
                 print(f"Time step {t}: q_values.shape: {q_values.shape}, hidden.shape: {hidden.shape}")
                 q_vals_buffer.append(q_values)
             
-            for t in range(BURN_IN_TIME_STEPS, SAMPLE_SIZE):
+            for t in range(BURN_IN_TIME_STEPS, BURN_IN_TIME_STEPS + TRAINING_TIME_STEPS ):
               
-                agent_qs,_ = torch.max(q_vals_buffer[t], dim=-1)
-
-                q_tot = mixer_net(q_vals_buffer[t-BOOTSTRAP_TIME_STEPS:t], states[t-BOOTSTRAP_TIME_STEPS:t]) # Get target Q-values for bootstrap time steps
+                agent_qs,_ = torch.max(q_vals_buffer[t+1], dim=-1)
+                q_tot = mixer_net(agent_qs, states[t+1]) # Get target Q-values for bootstrap time steps
+                #y_t = 
 
         
 
