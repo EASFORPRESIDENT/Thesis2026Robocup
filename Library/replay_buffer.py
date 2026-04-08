@@ -64,13 +64,18 @@ class ReplayBuffer:
         self.buffer.append(joint_episode.copy())
         self.episode = Episode()
 
-    def get_batch(self, num_of_samples: int, sample_size: int):
+    def get_batch(self, num_of_samples: int, sample_size: int, padding: int):
         random_episodes = random.choices(self.buffer, k=num_of_samples)
         batch = []
         for episode in random_episodes:
             if sample_size >= len(episode):
                 batch.append(list(episode))
+                print(f"WARNING! Episode length {len(episode)} is less than sample size {sample_size}, using entire episode as sample") #Debug print
             else:
                 start = random.randint(0, len(episode) - sample_size)
                 batch.append(list(episode)[start:start + sample_size])
+
+            for i in range(sample_size + padding - len(batch[-1])):
+                # Copy last transition as padding
+                batch[-1].append(batch[-1][-1])
         return batch
