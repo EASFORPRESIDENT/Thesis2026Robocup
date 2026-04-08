@@ -52,7 +52,7 @@ class ReplayBuffer:
             joint_episode[timestep]["observations"][agent_id] = transition["observation"]
             joint_episode[timestep]["actions"][agent_id] = transition["action"]
             joint_episode[timestep]["reward"][agent_id] = transition["reward"]
-            joint_episode[timestep]["done"][agent_id] = transition["done"]
+            joint_episode[timestep]["done"] = transition["done"]
 
         for step in joint_episode:
             if any(obs is None for obs in step["observations"]):
@@ -64,18 +64,24 @@ class ReplayBuffer:
         self.buffer.append(joint_episode.copy())
         self.episode = Episode()
 
-    def get_batch(self, num_of_samples: int, sample_size: int, padding: int):
+    def get_batch(self, num_of_samples: int, sample_size: int, extra_steps: int):
         random_episodes = random.choices(self.buffer, k=num_of_samples)
         batch = []
         for episode in random_episodes:
+            start = 0
             if sample_size >= len(episode):
                 batch.append(list(episode))
                 print(f"\033[33mWARNING! Episode length {len(episode)} is less than sample size {sample_size}, using entire episode as sample\033[0m") #Debug print
             else:
-                start = random.randint(0, len(episode) - sample_size)
-                batch.append(list(episode)[start:start + sample_size])
+                start = random.randint(0, len(episode) - (sample_size - extra_steps))
+                batch.append(list(episode)[start:start + (sample_size - extra_steps)])
 
-            for i in range(sample_size + padding - len(batch[-1])):
-                # Copy last transition as padding
-                batch[-1].append(batch[-1][-1])
+            for i in range(sample_size - len(batch[-1])):
+                # If episode has enough steps from start, append additional steps from the episode
+                if start + (sample_size - extra_steps) + i < len(episode):
+                    batch[-1].append(episode[start + (sample_size - extra_steps) + i])
+                else:
+                    # Otherwise, pad with the last transition
+                    batch[-1].append(batch[-1][-1])
+
         return batch
