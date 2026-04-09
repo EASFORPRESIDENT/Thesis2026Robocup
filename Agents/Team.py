@@ -19,7 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from Library.replay_buffer import ReplayBuffer
-from Library.learner_utils import collate_batch
+from Library.learner_utils import backprop, collate_batch
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Team controller")
@@ -97,13 +97,18 @@ def main():
     
     while training:
         barrier.wait() # Wait for all agents to finish episode
+
+        # Get episode data from queue and store in replay buffer
         for i in range(N_AGENTS):
             sub_episode = queue.get()
             replay_buffer.extend_episode(sub_episode)
         replay_buffer.end_episode()
         batch = replay_buffer.get_batch(num_of_samples=NUMBER_OF_SAMPLES, sample_size=SAMPLE_SIZE, extra_steps=BOOTSTRAP_TIME_STEPS) #Get batch of transitions for training
         
+        # Collate batch of transitions into tensors for training
         obs, states, actions, rewards , done = collate_batch(batch)
+
+
         rewards = rewards[:, :, 0] # Shared reward for all agents, take reward of first agent in each transition
         #Train model here using batch of transitions
         print("Action batch shape:", actions.shape)
@@ -145,6 +150,9 @@ def main():
             print("TD mean per time step shape:", TD_mean_per_time_step.shape, "Q tot mean per time step shape:", Q_tot_mean_per_time_step.shape)
             loss = F.mse_loss(Q_tot_mean_per_time_step, TD_mean_per_time_step)
             print("Loss:", loss.item())
+
+            optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
+            backprop(model, optimizer, loss, max_grad_norm=10)
         
             
         
