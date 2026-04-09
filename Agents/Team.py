@@ -120,7 +120,10 @@ def main():
         batch = replay_buffer.get_batch(num_of_samples=NUMBER_OF_SAMPLES, sample_size=SAMPLE_SIZE, extra_steps=BOOTSTRAP_TIME_STEPS) #Get batch of transitions for training
         # Collate batch of transitions into tensors for training
         
+        # Collate batch of transitions into tensors for training
         obs, states, actions, rewards , done = collate_batch(batch)
+
+
         rewards = rewards[:, :, 0] # Shared reward for all agents, take reward of first agent in each transition
         #Train model here using batch of transitions
 
