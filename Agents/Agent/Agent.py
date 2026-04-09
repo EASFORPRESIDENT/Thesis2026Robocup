@@ -113,17 +113,22 @@ import random
 
 def select_action(q_values, epsilon):
     if random.random() < epsilon:
-        return torch.randint(0, q_values.shape[-1], (1,))
+        action = torch.tensor([-float('inf')])
+        while (action == float('-inf')): # Ensure that the random action is valid (not masked out)
+            action = torch.randint(0, q_values.shape[-1], (1,))
+        return action
     else:
         return torch.argmax(q_values, dim=-1)
 
 def reward_func(status):
     if status == hfo.GOAL:
-        return 1.0
+        return 5.0
     elif status == hfo.CAPTURED_BY_DEFENSE:
         return -1.0
     elif status == hfo.OUT_OF_BOUNDS:
-        return -0.5
+        return -1.0
+    elif status == hfo.OUT_OF_TIME:
+        return -1.0
     else:
         return 0.0
 

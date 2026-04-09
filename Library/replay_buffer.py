@@ -80,6 +80,7 @@ class ReplayBuffer:
                 # If episode has enough steps from start, append additional steps from the episode
                 if start + (sample_size - extra_steps) + i < len(episode):
                     batch[-1].append(episode[start + (sample_size - extra_steps) + i])
+
                 else:
                     # Otherwise, pad with the last transition
                     batch[-1].append(batch[-1][-1])

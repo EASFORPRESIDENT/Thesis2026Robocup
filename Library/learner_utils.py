@@ -50,8 +50,6 @@ def collate_batch(batch):
     done = torch.tensor(done, dtype=torch.bool)
     done = done.permute(1, 0)
 
-    print(rewards.shape)
-    print(done.shape)
     return obs, states, actions, rewards, done
 
 #optimizer = torch.optim.Adam(qmix.parameters(), lr=3e-4)
@@ -61,3 +59,15 @@ def backprop(qmix, optimizer, loss, max_grad_norm):
     grad_norm = torch.nn.utils.clip_grad_norm_(qmix.parameters(), max_grad_norm)
     optimizer.step()
     return grad_norm
+
+def calc_q_vals_buffer(agent_net, obs, batch_length, N_AGENTS, SAMPLE_SIZE):
+    hidden = agent_net.init_hidden(batch_length * N_AGENTS, device=obs.device) # Initialize hidden state for all agents in batch, will be updated at each time step during training loop
+    q_vals_buffer = []
+
+    for t in range(SAMPLE_SIZE): # Unroll GRU and compute Q-values for all time steps in sample, store in buffer for later use in training loop
+        obs_flat = obs[t].reshape(batch_length * N_AGENTS, -1)
+        q_values, hidden = agent_net(obs_flat, hidden)
+        q_values = q_values.reshape(batch_length, N_AGENTS, -1)
+        q_vals_buffer.append(q_values)
+
+    return q_vals_buffer

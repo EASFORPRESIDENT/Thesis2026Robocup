@@ -12,6 +12,7 @@ import time
 import argparse
 from Agent.Agent import run_agent
 from DummyAgent.DummyAgent import run_DummyAgent
+import matplotlib.pyplot as plt
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -19,7 +20,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from Library.replay_buffer import ReplayBuffer
-from Library.learner_utils import collate_batch
+from Library.learner_utils import backprop,calc_q_vals_buffer, collate_batch
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Team controller")
@@ -53,18 +54,26 @@ def main():
     Epsilon = 1.0 #Start value for epsilon-greedy action selection
     epsilon_min = 0.05
     decay_rate = 1e-4
+    LEARNING_RATE = 1e-4
+    MAX_GRAD = 5
+    training_step = 0
    
-    NUMBER_OF_SAMPLES = 32
+    NUMBER_OF_SAMPLES = 26
     BURN_IN_TIME_STEPS = 5 #Number of time steps to unroll GRU for during training
-    BOOTSTRAP_TIME_STEPS = 2 #Number of time steps to build target Q-values for during training
+    BOOTSTRAP_TIME_STEPS = 6 #Number of time steps to build target Q-values for during training
     TRAINING_TIME_STEPS = 4 #Number of time steps to train on during each training iteration
     SAMPLE_SIZE = BURN_IN_TIME_STEPS + BOOTSTRAP_TIME_STEPS + TRAINING_TIME_STEPS
     DISCOUNT_FACTOR = 0.99
     
     if args.Training == True:
         model = QMIX(OBS_DIM,STATE_DIM,N_AGENTS,N_ACTIONS)
+        target_model = QMIX(OBS_DIM,STATE_DIM,N_AGENTS,N_ACTIONS)
+        target_agent_net = target_model.agent_net
+        target_mixer_net = target_model.mixer
         agent_net = model.agent_net
         mixer_net = model.mixer
+        plt.ion()
+        losses = []
         
     else:
         
@@ -85,7 +94,7 @@ def main():
         Debug_barrier = mp.Barrier(N_AGENTS) #CAN REMOVE LATER
         replay_buffer = ReplayBuffer(num_of_episodes=1000)
     
-
+      
     for i in range(N_AGENTS):
         p = mp.Process(target=run_agent, args=(i,agent_net,queue,barrier,training,N_ACTIONS,Epsilon,Debug_barrier if training else None)) #CAN REMOVE BARRIER LATER
         #p = mp.Process(target=run_DummyAgent, args=())
@@ -93,67 +102,77 @@ def main():
         processes.append(p)
         time.sleep(3) #Need this to avoid race condition
 
-       
+    
     
     while training:
         barrier.wait() # Wait for all agents to finish episode
+        
+
+        if training_step % 20 == 0:
+            target_mixer_net.load_state_dict(mixer_net.state_dict())
+            target_agent_net.load_state_dict(agent_net.state_dict())
+
+        # Get episode data from queue and store in replay buffer
         for i in range(N_AGENTS):
             sub_episode = queue.get()
             replay_buffer.extend_episode(sub_episode)
         replay_buffer.end_episode()
         batch = replay_buffer.get_batch(num_of_samples=NUMBER_OF_SAMPLES, sample_size=SAMPLE_SIZE, extra_steps=BOOTSTRAP_TIME_STEPS) #Get batch of transitions for training
+        # Collate batch of transitions into tensors for training
         
         obs, states, actions, rewards , done = collate_batch(batch)
         rewards = rewards[:, :, 0] # Shared reward for all agents, take reward of first agent in each transition
         #Train model here using batch of transitions
-        print("Action batch shape:", actions.shape)
-        #BURN IN TIME STEPS: Unroll GRU for burn-in time steps to get hidden state
-        with torch.no_grad():
-            hidden = agent_net.init_hidden(len(batch) * N_AGENTS, device=obs.device)
-            q_vals_buffer = []
 
-            for t in range(SAMPLE_SIZE):
-                obs_flat = obs[t].reshape(len(batch) * N_AGENTS, -1)
-                q_values, hidden = agent_net(obs_flat, hidden)
-                q_values = q_values.reshape(len(batch), N_AGENTS, -1)
-                q_vals_buffer.append(q_values)
+        
+        
+        q_vals_buffer = calc_q_vals_buffer(agent_net, obs, len(batch), N_AGENTS, SAMPLE_SIZE-BOOTSTRAP_TIME_STEPS) #Compute Q-values for all time steps in sample (including burn-in) of online network
+        with torch.no_grad(): 
+            target_q_vals_buffer = calc_q_vals_buffer(target_agent_net, obs, len(batch), N_AGENTS, SAMPLE_SIZE) #Compute target Q-values for all time steps in sample (including burn-in and bootstrap time steps) of target network
 
-            TD_target_buffer = torch.zeros(TRAINING_TIME_STEPS, NUMBER_OF_SAMPLES, device=obs.device)
-            Q_tot_buffer = torch.zeros(TRAINING_TIME_STEPS, NUMBER_OF_SAMPLES, device=obs.device)
+        TD_target_buffer = torch.zeros(TRAINING_TIME_STEPS, NUMBER_OF_SAMPLES, device=obs.device)
+        Q_tot_buffer = torch.zeros(TRAINING_TIME_STEPS, NUMBER_OF_SAMPLES, device=obs.device)
+        
+        for t in range(BURN_IN_TIME_STEPS, BURN_IN_TIME_STEPS + TRAINING_TIME_STEPS ): #Build TD target per time step for training time steps, also compute Q_tot for online network for training time steps
             
-            for t in range(BURN_IN_TIME_STEPS, BURN_IN_TIME_STEPS + TRAINING_TIME_STEPS ):
-              
-                Future_reward = torch.zeros(NUMBER_OF_SAMPLES, device=obs.device)
-                mask = torch.ones(NUMBER_OF_SAMPLES, device=obs.device)
-                
+            Future_reward = torch.zeros(NUMBER_OF_SAMPLES, device=obs.device)
+            mask = torch.ones(NUMBER_OF_SAMPLES, device=obs.device)
+
+            with torch.no_grad(): # Compute target Q-values for training time steps using rewards and target network Q-values for bootstrap time steps
+                mask = (done.cumsum(dim=0) <= 1).float()
+
                 for i in range(0, BOOTSTRAP_TIME_STEPS):
-                    Future_reward += (DISCOUNT_FACTOR ** (i)) * rewards[t+i,1] * mask[t+i] # Compute discounted future reward for bootstrap time steps, only use reward of first agent in each transition since shared reward setting
-                    mask = (done.cumsum(dim=0) <= 1).float()
+                    Future_reward += (DISCOUNT_FACTOR ** (i)) * rewards[t+i] * mask[t+i] # Compute discounted future reward for bootstrap time steps, only use reward of first agent in each transition since shared reward setting
+                    
 
-                agent_qs,_ = torch.max(q_vals_buffer[t+BOOTSTRAP_TIME_STEPS], dim=-1)
-                q_tot = mixer_net(agent_qs, states[t+BOOTSTRAP_TIME_STEPS]).squeeze() # Get target Q-values for bootstrap time steps
-                y_t = Future_reward + q_tot*mask[t+BOOTSTRAP_TIME_STEPS] # Compute target Q-values using rewards and discounted future Q-values
-                TD_target_buffer[t-BURN_IN_TIME_STEPS] = y_t  # Compute TD target for training time steps
+                agent_qs_target,_ = torch.max(target_q_vals_buffer[t+BOOTSTRAP_TIME_STEPS], dim=-1) #Greedy action selection for bootstrap time steps using target network Q-values
+                q_tot_target = target_mixer_net(agent_qs_target, states[t+BOOTSTRAP_TIME_STEPS]).squeeze() # Get target Q-values for bootstrap time steps
+                y_t = Future_reward + q_tot_target*mask[t+BOOTSTRAP_TIME_STEPS] # Compute target Q-values using rewards and discounted future Q-values
+                TD_target_buffer[t-BURN_IN_TIME_STEPS] = y_t  # Add TD target to buffer for training time steps
 
-                chosen_q = torch.gather(q_vals_buffer[t], dim=2, index=actions[t].unsqueeze(-1)).squeeze(-1)
-              
-                Q_tot_buffer[t-BURN_IN_TIME_STEPS] = mixer_net(chosen_q, states[t]).squeeze()
+            chosen_q = torch.gather(q_vals_buffer[t], dim=2, index=actions[t].unsqueeze(-1)).squeeze(-1)
+            Q_tot_buffer[t-BURN_IN_TIME_STEPS] = mixer_net(chosen_q, states[t]).squeeze()
 
-            print("TD target buffer shape:", TD_target_buffer.shape , "Q tot buffer shape:", Q_tot_buffer.shape)
-            TD_mean_per_time_step = TD_target_buffer.mean(dim=0)
-            Q_tot_mean_per_time_step = Q_tot_buffer.mean(dim=0)
-            print("TD mean per time step shape:", TD_mean_per_time_step.shape, "Q tot mean per time step shape:", Q_tot_mean_per_time_step.shape)
-            loss = F.mse_loss(Q_tot_mean_per_time_step, TD_mean_per_time_step)
-            print("Loss:", loss.item())
-        
-            
-        
+        loss = F.mse_loss(TD_target_buffer, Q_tot_buffer)
+        losses.append(loss.item())
+
+        if training_step % 10 == 0:
+            plt.clf()
+            plt.plot(losses)
+            plt.savefig("loss.png")
+
+
+        optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+        backprop(model, optimizer, loss, max_grad_norm=MAX_GRAD)
 
         if Epsilon > epsilon_min:
             Epsilon -= decay_rate
         barrier.wait() # Signal agents to start next episode
-        
 
+        training_step += 1
+        
+    plt.ioff()
+    plt.show()
 
     for p in processes:
         p.join() #Wait for all processes to finish before exiting main
