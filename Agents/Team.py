@@ -21,7 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from Library.replay_buffer import ReplayBuffer
-from Library.learner_utils import backprop,calc_q_vals_buffer, collate_batch
+from Library.learner_utils import backprop,calc_q_vals_buffer, collate_batch, get_action_mask
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Team controller")
@@ -55,13 +55,13 @@ def main():
     Epsilon = mp.Value('d', 1.0) #Start value for epsilon-greedy action selection
     epsilon_min = 0.05
     decay_rate = 1e-4
-    LEARNING_RATE = 1e-4
+    LEARNING_RATE = 3e-5
     MAX_GRAD = 5
     training_step = 0
    
     NUMBER_OF_SAMPLES = 26
     BURN_IN_TIME_STEPS = 5 #Number of time steps to unroll GRU for during training
-    BOOTSTRAP_TIME_STEPS = 6 #Number of time steps to build target Q-values for during training
+    BOOTSTRAP_TIME_STEPS = 2 #Number of time steps to build target Q-values for during training
     TRAINING_TIME_STEPS = 4 #Number of time steps to train on during each training iteration
     SAMPLE_SIZE = BURN_IN_TIME_STEPS + BOOTSTRAP_TIME_STEPS + TRAINING_TIME_STEPS
     DISCOUNT_FACTOR = 0.99
@@ -75,6 +75,10 @@ def main():
         mixer_net = model.mixer
         plt.ion()
         losses = []
+        Q_tot_buffer_mean = []
+        Q_tot_buffer_max_abs = []
+        TD_target_buffer_mean = []
+        Gradient_norms = []
         barrier = mp.Barrier(N_AGENTS + 1) # +1 for main process
         Debug_semaphore = Semaphore(1) #CAN REMOVE LATER
         replay_buffer = ReplayBuffer(num_of_episodes=1000)
@@ -112,7 +116,7 @@ def main():
         barrier.wait() # Wait for all agents to finish episode
         
 
-        if training_step % 20 == 0:
+        if training_step % 10 == 0:
             target_mixer_net.load_state_dict(mixer_net.state_dict())
             target_agent_net.load_state_dict(agent_net.state_dict())
 
@@ -151,8 +155,14 @@ def main():
                 for i in range(0, BOOTSTRAP_TIME_STEPS):
                     Future_reward += (DISCOUNT_FACTOR ** (i)) * rewards[t+i] * mask[t+i] # Compute discounted future reward for bootstrap time steps, only use reward of first agent in each transition since shared reward setting
                     
+                masked_actions = target_q_vals_buffer[t+BOOTSTRAP_TIME_STEPS].clone()
 
-                agent_qs_target,_ = torch.max(target_q_vals_buffer[t+BOOTSTRAP_TIME_STEPS], dim=-1) #Greedy action selection for bootstrap time steps using target network Q-values
+                for a in range(N_AGENTS):
+                    for s in range(NUMBER_OF_SAMPLES):
+                        _,_,action_mask = get_action_mask(N_ACTIONS,N_AGENTS-1,0, obs[t+BOOTSTRAP_TIME_STEPS,s,a]) # Get action mask for bootstrap time step
+                        masked_actions[s,a] = masked_actions[s,a].masked_fill(~action_mask, float('-inf')) # Mask out invalid actions for bootstrap time step
+                        
+                agent_qs_target,_ = torch.max(masked_actions, dim=-1) #Greedy action selection for bootstrap time steps using target network Q-values
                 q_tot_target = target_mixer_net(agent_qs_target, states[t+BOOTSTRAP_TIME_STEPS]).squeeze() * (DISCOUNT_FACTOR**BOOTSTRAP_TIME_STEPS) # Get target Q-values for bootstrap time steps
                 y_t = Future_reward + q_tot_target*mask[t+BOOTSTRAP_TIME_STEPS] # Compute target Q-values using rewards and discounted future Q-values
                 TD_target_buffer[t-BURN_IN_TIME_STEPS] = y_t  # Add TD target to buffer for training time steps
@@ -160,17 +170,39 @@ def main():
             chosen_q = torch.gather(q_vals_buffer[t], dim=2, index=actions[t].unsqueeze(-1)).squeeze(-1)
             Q_tot_buffer[t-BURN_IN_TIME_STEPS] = mixer_net(chosen_q, states[t]).squeeze()
 
+        Mean_Q_tot = Q_tot_buffer.mean().item()
+        max_Q_tot = Q_tot_buffer.abs().max().item()
+        Mean_TD_target = TD_target_buffer.mean().item()
         loss = F.mse_loss(TD_target_buffer, Q_tot_buffer)
         losses.append(loss.item())
+        Q_tot_buffer_mean.append(Mean_Q_tot)
+        Q_tot_buffer_max_abs.append(max_Q_tot)
+        TD_target_buffer_mean.append(Mean_TD_target)
+    
+        gradiend_norm = backprop(model, optimizer, loss, max_grad_norm=MAX_GRAD)
+        Gradient_norms.append(gradiend_norm)
 
         if training_step % 25 == 0:
             plt.clf()
+            plt.xlabel("EPISODE")
             plt.plot(losses)
             plt.savefig("loss.png")
-
-
-        
-        backprop(model, optimizer, loss, max_grad_norm=MAX_GRAD)
+            plt.clf()
+            plt.xlabel("EPISODE")
+            plt.plot(Q_tot_buffer_mean)
+            plt.savefig("Q_tot_mean.png")
+            plt.clf()
+            plt.xlabel("EPISODE")
+            plt.plot(Q_tot_buffer_max_abs)
+            plt.savefig("Q_tot_max_abs.png")
+            plt.clf()
+            plt.xlabel("EPISODE")
+            plt.plot(TD_target_buffer_mean)
+            plt.savefig("TD_target_mean.png")
+            plt.clf()
+            plt.xlabel("EPISODE")
+            plt.plot(Gradient_norms)
+            plt.savefig("Gradient_norms.png")
 
         if Epsilon.value > epsilon_min:
             Epsilon.value -= decay_rate
