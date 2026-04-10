@@ -184,7 +184,14 @@ def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Eps
             status = env.step()
             
             if training:
-                transitions.save_transition(obs,action_idx,reward_func(status),t,agent_id,False)
+                transitions.save_transition(
+                    obs,
+                    int(action_idx.item()),
+                    reward_func(status),
+                    t,
+                    agent_id,
+                    False
+                )
             t = t+1
 
             
