@@ -69,12 +69,12 @@ class ReplayBuffer:
         batch = []
         for episode in random_episodes:
             start = 0
-            if sample_size >= len(episode):
-                batch.append(list(episode))
-                print(f"\033[33mWARNING! Episode length {len(episode)} is less than sample size {sample_size}, using entire episode as sample\033[0m") #Debug print
-            else:
-                start = random.randint(0, len(episode) - (sample_size - extra_steps))
-                batch.append(list(episode)[start:start + (sample_size - extra_steps)])
+            while sample_size > len(episode):
+                episode = random.choice(self.buffer) # Reroll if too short
+                print(f"\033[33mWARNING! Episode length {len(episode)} is less than sample size {sample_size}, rerolling...\033[0m") #Debug print
+            
+            start = random.randint(0, len(episode) - (sample_size - extra_steps))
+            batch.append(list(episode)[start:start + (sample_size - extra_steps)])
 
             for i in range(sample_size - len(batch[-1])):
                 # If episode has enough steps from start, append additional steps from the episode
