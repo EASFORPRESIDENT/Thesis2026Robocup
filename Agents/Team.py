@@ -163,7 +163,7 @@ def main():
         loss = F.mse_loss(TD_target_buffer, Q_tot_buffer)
         losses.append(loss.item())
 
-        if training_step % 10 == 0:
+        if training_step % 25 == 0:
             plt.clf()
             plt.plot(losses)
             plt.savefig("loss.png")
