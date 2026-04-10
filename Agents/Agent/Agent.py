@@ -80,13 +80,13 @@ def get_action_mask(n_actions,n_temates,n_opponents, obs : hfo.HFOEnvironment):
     if obs[5] != 1: # Check if in possession of the ball
         action_mask[1] = False # Can't shoot if not in possession of the ball
         action_mask[2] = False # Can't dribble if not in possession of the ball
-        action_mask[6] = False # Can't reorient if not in possession of the ball
         for i in range(0, n_temates):
             action_mask[7 + i] = False # Can't pass if not in possession of the ball
 
     else: # Has possession of the ball
             action_mask[0] = False # Can't move if in possession of the ball
             action_mask[5] = False # Can't go to ball if in possession of the ball
+            action_mask[6] = False # Can't reorient if in possession of the ball
             for i in range(0, n_temates): # Check if more than one teammate is in passing range
                 obs_index = teammate_start_idx + 3*i
                 action_index = 7 + i
@@ -173,7 +173,9 @@ def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Eps
                 masked_q_values = masked_q_values.masked_fill(~action_mask.unsqueeze(0), float('-inf')) # Mask out invalid actions
 
                 if training:
-                    action_idx = select_action(masked_q_values, Epsilon) # Epsilon-greedy action selection
+                    eps = Epsilon.value
+                    print(f"Episode {episode}, Epsilon {eps:.3f}") #Debug print
+                    action_idx = select_action(masked_q_values, eps) # Epsilon-greedy action selection
                 else:
                     action_idx = torch.argmax(masked_q_values, dim=-1) # Greedy action selection during evaluation
                     

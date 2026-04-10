@@ -52,7 +52,7 @@ def main():
     WEIGHTS_PATH = PROJECT_ROOT / f"Agents/Agent/{args.n_O_agents}v{args.n_D_agents}.pt"
 
     training = args.Training
-    Epsilon = 1.0 #Start value for epsilon-greedy action selection
+    Epsilon = mp.Value('d', 1.0) #Start value for epsilon-greedy action selection
     epsilon_min = 0.05
     decay_rate = 1e-4
     LEARNING_RATE = 1e-4
@@ -78,6 +78,7 @@ def main():
         barrier = mp.Barrier(N_AGENTS + 1) # +1 for main process
         Debug_semaphore = Semaphore(1) #CAN REMOVE LATER
         replay_buffer = ReplayBuffer(num_of_episodes=1000)
+        optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
         
     else:
         
@@ -88,6 +89,7 @@ def main():
     
     
     agent_net.share_memory()
+    
     #torch.save(model.agent_net.state_dict(), WEIGHTS_PATH) #After training complete
 
     processes = []
@@ -151,7 +153,7 @@ def main():
                     
 
                 agent_qs_target,_ = torch.max(target_q_vals_buffer[t+BOOTSTRAP_TIME_STEPS], dim=-1) #Greedy action selection for bootstrap time steps using target network Q-values
-                q_tot_target = target_mixer_net(agent_qs_target, states[t+BOOTSTRAP_TIME_STEPS]).squeeze() # Get target Q-values for bootstrap time steps
+                q_tot_target = target_mixer_net(agent_qs_target, states[t+BOOTSTRAP_TIME_STEPS]).squeeze() * (DISCOUNT_FACTOR**BOOTSTRAP_TIME_STEPS) # Get target Q-values for bootstrap time steps
                 y_t = Future_reward + q_tot_target*mask[t+BOOTSTRAP_TIME_STEPS] # Compute target Q-values using rewards and discounted future Q-values
                 TD_target_buffer[t-BURN_IN_TIME_STEPS] = y_t  # Add TD target to buffer for training time steps
 
@@ -167,11 +169,11 @@ def main():
             plt.savefig("loss.png")
 
 
-        optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+        
         backprop(model, optimizer, loss, max_grad_norm=MAX_GRAD)
 
-        if Epsilon > epsilon_min:
-            Epsilon -= decay_rate
+        if Epsilon.value > epsilon_min:
+            Epsilon.value -= decay_rate
         barrier.wait() # Signal agents to start next episode
 
         training_step += 1
