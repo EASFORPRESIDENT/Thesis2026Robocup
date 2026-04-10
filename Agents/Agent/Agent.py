@@ -81,10 +81,10 @@ def get_action_mask(n_actions,n_temates,n_opponents, obs : hfo.HFOEnvironment):
         action_mask[1] = False # Can't shoot if not in possession of the ball
         action_mask[2] = False # Can't dribble if not in possession of the ball
         action_mask[6] = False # Can't reorient if not in possession of the ball
-        for i in range(1, n_temates + 1):
-            action_mask[6 + i] = False # Can't pass if not in possession of the ball
+        for i in range(0, n_temates):
+            action_mask[7 + i] = False # Can't pass if not in possession of the ball
 
-    else: # Check if teammates is in passing range
+    else: # Has possession of the ball
             action_mask[0] = False # Can't move if in possession of the ball
             action_mask[5] = False # Can't go to ball if in possession of the ball
             for i in range(0, n_temates): # Check if more than one teammate is in passing range
@@ -113,26 +113,27 @@ import random
 
 def select_action(q_values, epsilon):
     if random.random() < epsilon:
-        action = torch.tensor([-float('inf')])
-        while (action == float('-inf')): # Ensure that the random action is valid (not masked out)
+        action_value = torch.tensor([-float('inf')])
+        while (action_value == float('-inf')): # Ensure that the random action is valid (not masked out)
             action = torch.randint(0, q_values.shape[-1], (1,))
+            action_value = q_values[0][action]
         return action
     else:
         return torch.argmax(q_values, dim=-1)
 
 def reward_func(status):
     if status == hfo.GOAL:
-        return 5.0
+        return 1.0
     elif status == hfo.CAPTURED_BY_DEFENSE:
         return -1.0
     elif status == hfo.OUT_OF_BOUNDS:
-        return -1.0
+        return -0.5
     elif status == hfo.OUT_OF_TIME:
-        return -1.0
+        return -0.5
     else:
         return 0.0
 
-def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Epsilon = 0,Debug_barrier=None): #CAN REMOVE DEBUG_BARRIER LATER
+def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Epsilon = 0,Debug_semaphore=None): #CAN REMOVE DEBUG_BARRIER LATER
     #args = parse_args()
 
     hidden_dim = 64      # samma som i träningen
@@ -162,20 +163,15 @@ def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Eps
         while status == hfo.IN_GAME:
             obs = env.getState()
             obs_tensor = torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0)
-            """
-            print(f"{t} :obs of agent: {agent_id} uni:{my_unum}, T1: {obs_tensor[0][18]}, T2: {obs_tensor[0][21]}, O1: {obs_tensor[0][24]}, O2: {obs_tensor[0][27]} \n") #Debug print
-            if t == 20: #Debug print
-                Debug_barrier.wait() #Wait untill all agents reach this point
-                print(f"obs of agent: {agent_id} uni:{my_unum}, T1: {obs_tensor[0][18]}, T2: {obs_tensor[0][21]}, O1: {obs_tensor[0][24]}, O2: {obs_tensor[0][27]} \n") #Debug print
-                time.sleep(1)
-                print("pause")
-                """
             
+
+
             with torch.no_grad():
                 q_values, hidden = agent_network(obs_tensor, hidden)
                 masked_q_values = q_values.clone()
                 temmate_pass_unums, opponent_mark_unums,action_mask = get_action_mask(n_actions, n_teammates, n_opponents, obs)
                 masked_q_values = masked_q_values.masked_fill(~action_mask.unsqueeze(0), float('-inf')) # Mask out invalid actions
+
                 if training:
                     action_idx = select_action(masked_q_values, Epsilon) # Epsilon-greedy action selection
                 else:
@@ -183,6 +179,7 @@ def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Eps
                     
                 print(f"Agent {agent_id} chose action {action_idx.item()} with q-value {q_values[0][action_idx].item()} \n") #Debug print
                 acting(action_idx ,temmate_pass_unums, opponent_mark_unums, env)
+
 
             status = env.step()
             

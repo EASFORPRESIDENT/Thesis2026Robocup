@@ -13,6 +13,7 @@ import argparse
 from Agent.Agent import run_agent
 from DummyAgent.DummyAgent import run_DummyAgent
 import matplotlib.pyplot as plt
+from multiprocessing import Semaphore
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -65,7 +66,7 @@ def main():
     SAMPLE_SIZE = BURN_IN_TIME_STEPS + BOOTSTRAP_TIME_STEPS + TRAINING_TIME_STEPS
     DISCOUNT_FACTOR = 0.99
     
-    if args.Training == True:
+    if training:
         model = QMIX(OBS_DIM,STATE_DIM,N_AGENTS,N_ACTIONS)
         target_model = QMIX(OBS_DIM,STATE_DIM,N_AGENTS,N_ACTIONS)
         target_agent_net = target_model.agent_net
@@ -74,6 +75,9 @@ def main():
         mixer_net = model.mixer
         plt.ion()
         losses = []
+        barrier = mp.Barrier(N_AGENTS + 1) # +1 for main process
+        Debug_semaphore = Semaphore(1) #CAN REMOVE LATER
+        replay_buffer = ReplayBuffer(num_of_episodes=1000)
         
     else:
         
@@ -89,14 +93,12 @@ def main():
     processes = []
     queue = mp.Queue()
 
-    if training:
-        barrier = mp.Barrier(N_AGENTS + 1) # +1 for main process
-        Debug_barrier = mp.Barrier(N_AGENTS) #CAN REMOVE LATER
-        replay_buffer = ReplayBuffer(num_of_episodes=1000)
+  
+        
     
       
     for i in range(N_AGENTS):
-        p = mp.Process(target=run_agent, args=(i,agent_net,queue,barrier,training,N_ACTIONS,Epsilon,Debug_barrier if training else None)) #CAN REMOVE BARRIER LATER
+        p = mp.Process(target=run_agent, args=(i,agent_net,queue,barrier,training,N_ACTIONS,Epsilon,Debug_semaphore if training else None)) #CAN REMOVE BARRIER LATER
         #p = mp.Process(target=run_DummyAgent, args=())
         p.start()
         processes.append(p)
