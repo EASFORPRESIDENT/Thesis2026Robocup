@@ -81,7 +81,10 @@ class ReplayBuffer:
                 episode = random.choice(self.buffer) # Reroll if too short
                 #print(f"\033[33mWARNING! Episode length {len(episode)} is less than sample size {sample_size}, rerolling...\033[0m") #Debug print
             
-            start = random.randint(0, len(episode) - (sample_size - extra_steps))
+            max_start = len(episode) - (sample_size - extra_steps)
+
+            u = random.random()
+            start = int(max_start * (1 - u**2))
             batch.append(list(episode)[start:start + (sample_size - extra_steps)])
 
             for i in range(sample_size - len(batch[-1])):
