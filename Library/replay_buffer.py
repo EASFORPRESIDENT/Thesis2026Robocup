@@ -84,7 +84,7 @@ class ReplayBuffer:
             max_start = len(episode) - (sample_size - extra_steps)
 
             u = random.random()
-            start = int(max_start * (1 - u**2))
+            start = int(max_start * (1 - u**2)) # Bias towards sampling later time steps in episode, as they are more likely to be shared between agents and contain more diverse transitions, while later time steps are more likely to be similar between agents and contain many transitions with zero reward. The bias is controlled by the exponent on u, where higher values will result in a stronger bias towards earlier time steps.
             batch.append(list(episode)[start:start + (sample_size - extra_steps)])
 
             for i in range(sample_size - len(batch[-1])):
