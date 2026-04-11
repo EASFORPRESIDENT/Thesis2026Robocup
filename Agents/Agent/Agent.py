@@ -8,6 +8,7 @@ import argparse
 import sys
 from pathlib import Path
 import time
+import matplotlib.pyplot as plt
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(PROJECT_ROOT))
@@ -77,11 +78,11 @@ def select_action(q_values, epsilon):
 
 def reward_func(status):
     if status == hfo.GOAL:
-        return 1.0
+        return 5.0
     elif status == hfo.CAPTURED_BY_DEFENSE:
-        return -1.0
+        return -4.0
     elif status == hfo.OUT_OF_BOUNDS:
-        return -0.5
+        return -1.5
     elif status == hfo.OUT_OF_TIME:
         return -0.5
     else:
@@ -107,7 +108,13 @@ def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Eps
     print(f"AGENT:{agent_id} has connected, Unifrom number:{my_unum}")
     n_teammates = env.getNumTeammates()
     n_opponents = env.getNumOpponents()
-    
+    plt.ion()
+    Episodes_since_last_goal = []
+    Avrage_goals_per_episodes = []
+    plt_start = 0
+    plt_start2 = 0
+    nr_episodes_since_last_goal = 0
+    nr_goals_per_episodes = 0
  
     for episode in itertools.count():
         status = hfo.IN_GAME
@@ -128,12 +135,12 @@ def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Eps
 
                 if training:
                     eps = Epsilon.value
-                    print(f"Episode {episode}, Epsilon {eps:.3f}") #Debug print
+                    #print(f"Episode {episode}, Epsilon {eps:.3f}") #Debug print
                     action_idx = select_action(masked_q_values, eps) # Epsilon-greedy action selection
                 else:
                     action_idx = torch.argmax(masked_q_values, dim=-1) # Greedy action selection during evaluation
                     
-                print(f"Agent {agent_id} chose action {action_idx.item()} with q-value {q_values[0][action_idx].item()} \n") #Debug print
+                #print(f"Agent {agent_id} chose action {action_idx.item()} with q-value {q_values[0][action_idx].item()} \n") #Debug print
                 acting(action_idx ,temmate_pass_unums, opponent_mark_unums, env)
 
 
@@ -150,14 +157,44 @@ def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Eps
                 )
             t = t+1
 
-            
+        print(f"Episode {episode} ended with {env.statusToString(status)}")
+        
         if training:
             transitions.done()
             queue.put(transitions) #Send episode to main process for backpropagation
             barrier.wait() #Wait untill all agents finish and start backpropagation
             barrier.wait() #Wait untill backpropagation finished
             transitions.reset()
-        print(f"Episode {episode} ended with {env.statusToString(status)}")
+        
+        if agent_id == 0:
+            if episode % 50 == 0:
+                Avrage_goals_per_episodes.append(nr_goals_per_episodes / 50)
+                nr_goals_per_episodes = 0
+
+            if status == hfo.GOAL:
+                Episodes_since_last_goal.append(nr_episodes_since_last_goal)
+                nr_goals_per_episodes += 1
+                nr_episodes_since_last_goal = 0
+            else:
+                nr_episodes_since_last_goal += 1
+            if episode % 50 == 0:
+                if len(Episodes_since_last_goal) % 100 == 0:
+                    plt_start = len(Episodes_since_last_goal) - 100
+
+                if len(Avrage_goals_per_episodes) % 100 == 0:
+                    plt_start2 = len(Avrage_goals_per_episodes) - 100
+
+                plt.clf()
+                plt.xlabel("EPISODE")
+                plt.plot(range(plt_start, plt_start + len(Episodes_since_last_goal[plt_start:])), Episodes_since_last_goal[plt_start:])
+                plt.savefig("Episodes_since_goal.png")
+                plt.clf()
+                plt.xlabel("EPISODE")
+                plt.plot(range(plt_start2, plt_start2 + len(Avrage_goals_per_episodes[plt_start2:])), Avrage_goals_per_episodes[plt_start2:])
+                plt.savefig("Avrage_goals_per_episodes.png")
+                
+                
+
 
         
 
