@@ -23,6 +23,7 @@ class Episode(list):
 class ReplayBuffer:
     def __init__(self, num_of_episodes: int):
         self.buffer = deque(maxlen=num_of_episodes)
+        self.real_buffer = deque(maxlen=num_of_episodes) # For evaluation purposes, only contains one copy of each episode, without reward-prioritized duplication
         self.episode = Episode()
 
     def extend_episode(self, episode: Episode):
@@ -40,7 +41,9 @@ class ReplayBuffer:
         for transition in self.episode:
             if transition["reward"] > 0 and not contains_positive_reward:
                 contains_positive_reward = True
-                print(f"\033[32mINFO: Episode contains positive reward {transition['reward']} at timestep {transition['timestep']} for agent {transition['agent_id']}\033[0m") #Debug print
+                print(f"\033[32mINFO: Episode contains positive reward {transition['reward']} at timestep {transition['timestep']}\033[0m") #Debug print
+                print(f"\033[32mINFO: Duplication factor for this episode: {positive_reward_duplication_factor}\033[0m") #Debug print
+            timestep = transition["timestep"]
             timestep = transition["timestep"]
             agent_id = transition["agent_id"]
 
@@ -70,6 +73,7 @@ class ReplayBuffer:
         #print (f"\033[33mINFO: Added episode to replay buffer with length {len(joint_episode)} and duplication count {duplication_count}\033[0m") #Debug print
         for _ in range(duplication_count):
             self.buffer.append(joint_episode.copy())
+        self.real_buffer.append(joint_episode.copy())
         self.episode = Episode()
 
     def get_batch(self, num_of_samples: int, sample_size: int, extra_steps: int):
@@ -97,3 +101,14 @@ class ReplayBuffer:
                     batch[-1].append(batch[-1][-1])
 
         return batch
+    
+    def get_average_goal_rate(self, num_episodes: int):
+        if num_episodes <= 0:
+            return 0
+        total_goals = 0
+        for episode in list(self.real_buffer)[-num_episodes:]:
+            for transition in episode:
+                rewards = transition["reward"]
+                if any(reward > 0 for reward in rewards):
+                    total_goals += 1
+        return total_goals / num_episodes
