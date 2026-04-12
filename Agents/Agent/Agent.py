@@ -157,7 +157,7 @@ def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Eps
                 )
             t = t+1
 
-        print(f"Episode {episode} ended with {env.statusToString(status)}")
+        #print(f"Episode {episode} ended with {env.statusToString(status)}")
         
         if training:
             transitions.done()
@@ -187,11 +187,11 @@ def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Eps
                 plt.clf()
                 plt.xlabel("EPISODE")
                 plt.plot(range(plt_start, plt_start + len(Episodes_since_last_goal[plt_start:])), Episodes_since_last_goal[plt_start:])
-                plt.savefig("Episodes_since_goal.png")
+                plt.savefig("plots/Episodes_since_goal.png")
                 plt.clf()
                 plt.xlabel("EPISODE")
                 plt.plot(range(plt_start2, plt_start2 + len(Avrage_goals_per_episodes[plt_start2:])), Avrage_goals_per_episodes[plt_start2:])
-                plt.savefig("Avrage_goals_per_episodes.png")
+                plt.savefig("plots/Avrage_goals_per_episodes.png")
                 
                 
 
