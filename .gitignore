@@ -441,3 +441,5 @@ FodyWeavers.xsd
 
 # Images
 *.png
+
+configs/trial_config.json

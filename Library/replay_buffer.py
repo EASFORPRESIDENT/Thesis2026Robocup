@@ -41,8 +41,8 @@ class ReplayBuffer:
         for transition in self.episode:
             if transition["reward"] > 0 and not contains_positive_reward:
                 contains_positive_reward = True
-                print(f"\033[32mINFO: Episode contains positive reward {transition['reward']} at timestep {transition['timestep']}\033[0m") #Debug print
-                print(f"\033[32mINFO: Duplication factor for this episode: {positive_reward_duplication_factor}\033[0m") #Debug print
+                #print(f"\033[32mINFO: Episode contains positive reward {transition['reward']} at timestep {transition['timestep']}\033[0m") #Debug print
+                #print(f"\033[32mINFO: Duplication factor for this episode: {positive_reward_duplication_factor}\033[0m") #Debug print
             timestep = transition["timestep"]
             timestep = transition["timestep"]
             agent_id = transition["agent_id"]

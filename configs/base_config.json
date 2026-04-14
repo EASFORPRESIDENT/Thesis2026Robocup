@@ -2,6 +2,9 @@
   "n_O_agents": 2,
   "n_D_agents": 1,
   "training": true,
+  "logging": true,
+  "plotting": true,
+  "duration": 30000,
   "learning_rate": 3e-5,
   "min_learning_rate": 1e-5,
   "learning_rate_decay": 0.90,
@@ -16,6 +19,6 @@
   "target_update_interval": 200,
   "max_grad_norm": 5,
   "duplicate_positive_episodes": true,
-  "max_positive_reward_duplication": 20,
-  "positive_reward_duplication_scale_factor": 20
+  "max_duplication": 20,
+  "duplication_scale_factor": 20
 }

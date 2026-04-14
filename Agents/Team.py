@@ -1,9 +1,4 @@
-from html import parser
-import os
 import sys
-import hfo
-import itertools
-import random
 import torch
 from pathlib import Path
 from Qmix.Qmix_base import QMIX, RecurrentAgentNetwork
@@ -22,8 +17,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from Library.replay_buffer import ReplayBuffer
-from Library.learner_utils import backprop, calc_q_vals_buffer, collate_batch, get_action_mask
-from Library.file_manager import load_params
+import Library.learner_utils as learner_utils
+import Library.file_manager as file_manager
 
 
 def parse_args():
@@ -41,8 +36,11 @@ def parse_args():
 
 
 def main():
+
+    # =================== Hyperparameters and setup ==================
+
     args = parse_args()
-    params = load_params(args.config)
+    params = file_manager.load_params(args.config)
     obs_dim = 10 + 6*(params["n_O_agents"]-1) + 3*params["n_D_agents"] + 2
     state_dim = obs_dim*params["n_O_agents"] # kolla upp om kan använda motståndare obs också
     n_agent = params["n_O_agents"]
@@ -56,6 +54,7 @@ def main():
     epsilon_min = params["epsilon_min"]
     decay_rate = params["epsilon_decay"]
     learning_rate = params["learning_rate"]
+    min_learning_rate = params["min_learning_rate"]
     max_grad = params["max_grad_norm"]
     training_step = 0
    
@@ -67,8 +66,16 @@ def main():
     discount_factor = params["discount_factor"]
     
     dupe = params["duplicate_positive_episodes"]
-    dup_cap = params["max_positive_reward_duplication"] # Cap on how much to duplicate positive reward episodes in replay buffer to prevent overfitting to them, set to a high value to disable cap
-    scale = params["positive_reward_duplication_scale_factor"] # Scale factor for how much to duplicate positive reward episodes in replay buffer based on average goal rate, higher value means more duplication of positive reward episodes when average goal rate is low, set to 0 to disable biasing towards positive reward episodes
+    dup_cap = params["max_duplication"] # Cap on how much to duplicate positive reward episodes in replay buffer to prevent overfitting to them, set to a high value to disable cap
+    scale = params["duplication_scale_factor"] # Scale factor for how much to duplicate positive reward episodes in replay buffer based on average goal rate, higher value means more duplication of positive reward episodes when average goal rate is low, set to 0 to disable biasing towards positive reward episodes
+    logging = params["logging"]
+    plotting = params["plotting"]
+    duration = params.get("duration", -1)
+
+    # ===================== End of hyperparameters and setup ==================
+
+    if logging:
+        run_dir, metrics = file_manager.init_run_logging(PROJECT_ROOT, params)
 
     if training:
         model = QMIX(obs_dim,state_dim,n_agent,n_actions)
@@ -89,7 +96,6 @@ def main():
         loss_plt_start = 0
         
     else:
-        
         agent_net = RecurrentAgentNetwork(obs_dim, hidden_dim, n_actions) #Load network from file
         state_dict = torch.load(weights_path, map_location="cpu")
         agent_net.load_state_dict(state_dict)
@@ -101,9 +107,20 @@ def main():
 
     processes = []
     queue = mp.Queue()
+    stop_event = mp.Event()
       
     for i in range(n_agent):
-        p = mp.Process(target=run_agent, args=(i,agent_net,queue,barrier,training,n_actions,epsilon,Debug_semaphore if training else None)) #CAN REMOVE BARRIER LATER
+        p = mp.Process(target=run_agent, args=(
+            i,
+            agent_net,
+            queue,
+            barrier,
+            stop_event,
+            training,
+            n_actions,
+            epsilon,
+            Debug_semaphore,
+            plotting if training else None)) #CAN REMOVE BARRIER LATER
         # p = mp.Process(target=run_DummyAgent, args=())
         p.start()
         processes.append(p)
@@ -113,9 +130,16 @@ def main():
     
     while training:
         barrier.wait() # Wait for all agents to finish episode
+
+        if duration > 0 and training_step >= duration:
+            training = False
+            stop_event.set() # Signal agents to stop
         
-        if training_step % 3000 == 0 and training_step > 0 and learning_rate > 1e-5:
-            learning_rate *= params["learning_rate_decay"]
+        if training_step % 3000 == 0 and training_step > 0 and learning_rate > min_learning_rate:
+                learning_rate *= 0.9
+                for param_group in optimizer.param_groups:
+                    param_group["lr"] = learning_rate
+                print(f"Updated learning rate to {learning_rate:.8f}")
             
 
         if training_step % 100 == 0:
@@ -149,16 +173,16 @@ def main():
         # Collate batch of transitions into tensors for training
         
         # Collate batch of transitions into tensors for training
-        obs, states, actions, rewards , done = collate_batch(batch)
+        obs, states, actions, rewards , done = learner_utils.collate_batch(batch)
 
         rewards = rewards[:, :, 0] # Shared reward for all agents, take reward of first agent in each transition
         #Train model here using batch of transitions
 
         if training_step > 200: #Only start training after enough transitions have been collected
         
-            q_vals_buffer = calc_q_vals_buffer(agent_net, obs, len(batch), n_agent, sample_size) #Compute Q-values for all time steps in sample (including burn-in) of online network
+            q_vals_buffer = learner_utils.calc_q_vals_buffer(agent_net, obs, len(batch), n_agent, sample_size) #Compute Q-values for all time steps in sample (including burn-in) of online network
             with torch.no_grad(): 
-                target_q_vals_buffer = calc_q_vals_buffer(target_agent_net, obs, len(batch), n_agent, sample_size) #Compute target Q-values for all time steps in sample (including burn-in and bootstrap time steps) of target network
+                target_q_vals_buffer = learner_utils.calc_q_vals_buffer(target_agent_net, obs, len(batch), n_agent, sample_size) #Compute target Q-values for all time steps in sample (including burn-in and bootstrap time steps) of target network
 
             TD_target_buffer = torch.zeros(training_time_steps, number_of_samples, device=obs.device)
             Q_tot_buffer = torch.zeros(training_time_steps, number_of_samples, device=obs.device)
@@ -178,7 +202,7 @@ def main():
 
                     for a in range(n_agent):
                         for s in range(number_of_samples):
-                            _,_,action_mask = get_action_mask(n_actions,n_agent-1,n_opponents, obs[t+bootstrap_time_steps,s,a]) # Get action mask for bootstrap time step
+                            _,_,action_mask = learner_utils.get_action_mask(n_actions,n_agent-1,n_opponents, obs[t+bootstrap_time_steps,s,a]) # Get action mask for bootstrap time step
                             masked_actions[s,a] = masked_actions[s,a].masked_fill(~action_mask, float('-inf')) # Mask out invalid actions for bootstrap time step
                             
                     best_actions = torch.argmax(masked_actions, dim=-1) # Get greedy actions for bootstrap time steps using online network Q-values
@@ -206,10 +230,10 @@ def main():
             Q_tot_buffer_max_abs.append(max_Q_tot)
             TD_target_buffer_mean.append(Mean_TD_target)
         
-            gradiend_norm = backprop(model, optimizer, loss, max_grad_norm=max_grad)
+            gradiend_norm = learner_utils.backprop(model, optimizer, loss, max_grad_norm=max_grad)
             Gradient_norms.append(gradiend_norm)
 
-            if training_step % 25 == 0:
+            if plotting and training_step % 25 == 0:
                 if training_step % 1000 == 0 and len(losses) > 1000:
                     loss_plt_start = len(losses) - 1000
                 plt.clf()
@@ -238,11 +262,19 @@ def main():
                 if training_step % 25 == 0:
                     print(f"Training step:  {training_step}, epsilon: {epsilon.value:.3f}") #Debug print
 
-        barrier.wait() # Signal agents to start next episode
+
+        if logging:
+            metrics["episodes"] += 1
+            metrics["goals"] += replay_buffer.real_buffer[-1][-1]["reward"][-1] > 0
+            metrics["best_avg_goal_rate"] = max(metrics["best_avg_goal_rate"], average_goal_rate)
+            metrics["epsilon"] = epsilon.value
+            metrics["learning_rate"] = learning_rate
+
         training_step += 1
-        if training_step == 30000: #Stop training after 30000 training steps
-            training = False
-        
+        barrier.wait() # Signal agents to start next episode
+
+    if logging:
+        file_manager.save_metrics(run_dir, metrics)
     plt.ioff()
     plt.show()
 

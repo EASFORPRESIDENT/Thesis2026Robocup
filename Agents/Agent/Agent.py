@@ -55,16 +55,6 @@ def acting(action_choice ,temmate_pass_unums, opponent_mark_unums, env: hfo.HFOE
         env.act(hfo.MARK_PLAYER, mark_who_unum) 
     else:
         raise ValueError(f"Invalid action choice: {action_choice}")
-    
-
-
-    
-
-
-
-
-
-import random
 
 def select_action(q_values, epsilon):
     if random.random() < epsilon:
@@ -88,7 +78,22 @@ def reward_func(status):
     else:
         return 0.0
 
-def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Epsilon = 0,Debug_semaphore=None): #CAN REMOVE DEBUG_BARRIER LATER
+
+
+
+
+def run_agent(
+        agent_id,
+        agent_network,
+        queue,
+        barrier,
+        stop_event,
+        training : bool,
+        n_actions,
+        Epsilon = 0,
+        Debug_semaphore = None,
+        plotting = True
+        ): #CAN REMOVE DEBUG_BARRIER LATER
     #args = parse_args()
 
     hidden_dim = 64      # samma som i träningen
@@ -117,6 +122,9 @@ def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Eps
     nr_goals_per_episodes = 0
  
     for episode in itertools.count():
+        if stop_event.is_set():
+            print(f"Agent {agent_id} received stop signal. Exiting.")
+            break
         status = hfo.IN_GAME
         t = 0
         hidden = agent_network.init_hidden(batch_agents=1, device="cpu")
@@ -184,19 +192,15 @@ def run_agent(agent_id,agent_network,queue,barrier,training : bool,n_actions,Eps
                 if len(Avrage_goals_per_episodes) % 100 == 0:
                     plt_start2 = len(Avrage_goals_per_episodes) - 100
 
-                plt.clf()
-                plt.xlabel("EPISODE")
-                plt.plot(range(plt_start, plt_start + len(Episodes_since_last_goal[plt_start:])), Episodes_since_last_goal[plt_start:])
-                plt.savefig("plots/Episodes_since_goal.png")
-                plt.clf()
-                plt.xlabel("EPISODE")
-                plt.plot(range(plt_start2, plt_start2 + len(Avrage_goals_per_episodes[plt_start2:])), Avrage_goals_per_episodes[plt_start2:])
-                plt.savefig("plots/Avrage_goals_per_episodes.png")
-                
-                
-
-
-        
+                if plotting:
+                    plt.clf()
+                    plt.xlabel("EPISODE")
+                    plt.plot(range(plt_start, plt_start + len(Episodes_since_last_goal[plt_start:])), Episodes_since_last_goal[plt_start:])
+                    plt.savefig("plots/Episodes_since_goal.png")
+                    plt.clf()
+                    plt.xlabel("EPISODE")
+                    plt.plot(range(plt_start2, plt_start2 + len(Avrage_goals_per_episodes[plt_start2:])), Avrage_goals_per_episodes[plt_start2:])
+                    plt.savefig("plots/Avrage_goals_per_episodes.png")
 
         if status == hfo.SERVER_DOWN:
             env.act(hfo.QUIT)
