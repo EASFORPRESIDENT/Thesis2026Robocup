@@ -52,8 +52,9 @@ def main():
     training = params["training"]
     epsilon = mp.Value('d', params["epsilon_start"]) # Start value for epsilon-greedy action selection
     epsilon_min = params["epsilon_min"]
-    decay_rate = params["epsilon_decay"]
+    epsilon_decay = params["epsilon_decay"]
     learning_rate = params["learning_rate"]
+    learning_rate_decay = params["learning_rate_decay"]
     min_learning_rate = params["min_learning_rate"]
     max_grad = params["max_grad_norm"]
     training_step = 0
@@ -108,7 +109,8 @@ def main():
     processes = []
     queue = mp.Queue()
     stop_event = mp.Event()
-      
+    
+    # Start agent processes
     for i in range(n_agent):
         p = mp.Process(target=run_agent, args=(
             i,
@@ -126,8 +128,7 @@ def main():
         processes.append(p)
         time.sleep(3) # Need this to avoid race condition
 
-    
-    
+    # Main training loop
     while training:
         barrier.wait() # Wait for all agents to finish episode
 
@@ -136,7 +137,7 @@ def main():
             stop_event.set() # Signal agents to stop
         
         if training_step % 3000 == 0 and training_step > 0 and learning_rate > min_learning_rate:
-                learning_rate *= 0.9
+                learning_rate *= learning_rate_decay
                 for param_group in optimizer.param_groups:
                     param_group["lr"] = learning_rate
                 print(f"Updated learning rate to {learning_rate:.8f}")
@@ -150,18 +151,9 @@ def main():
         for i in range(n_agent):
             sub_episode = queue.get()
             replay_buffer.extend_episode(sub_episode)
-        
         average_goal_rate = replay_buffer.get_average_goal_rate(num_episodes=100)
-        # num_duplications = min(
-        #     dup_cap,
-        #     2*round(1/average_goal_rate) if average_goal_rate > 0 else dup_cap
-        #     ) * int(dupe) # Compute number of duplications for positive reward episodes based on average goal rate, more duplications for lower goal rates to prioritize learning from them, capped by dup_cap to prevent overfitting to positive reward episodes
-        
-        # num_duplications = min(
-        #     dup_cap,
-        #     int(1 + (1.0 / average_goal_rate)**0.5) if average_goal_rate > 0 else dup_cap
-        #     ) * int(dupe)
-        
+
+        # Duplicate episodes with positive rewards
         num_duplications = min(
         dup_cap,
         max(1, int(1 + (1.0 - average_goal_rate) * scale))
@@ -258,7 +250,7 @@ def main():
                 plt.savefig("plots/Gradient_norms.png")
 
             if epsilon.value > epsilon_min:
-                epsilon.value -= decay_rate
+                epsilon.value -= epsilon_decay
                 if training_step % 25 == 0:
                     print(f"Training step:  {training_step}, epsilon: {epsilon.value:.3f}") #Debug print
 
