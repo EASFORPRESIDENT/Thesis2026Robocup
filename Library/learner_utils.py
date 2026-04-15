@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 #        obs:     [t, n_samples, n_agents, obs_dim]
 #        states:  [t, n_samples, state_dim]
@@ -39,7 +40,7 @@ def collate_batch(batch):
         done.append(sample_done)
 
 
-    obs = torch.tensor(obs, dtype=torch.float32)
+    obs = torch.from_numpy(np.array(obs, dtype=np.float32))
     obs = obs.permute(1, 0, 2, 3)
     states = torch.tensor(states, dtype=torch.float32)
     states = states.permute(1, 0, 2)
