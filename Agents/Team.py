@@ -9,7 +9,7 @@ import argparse
 from Agent.Agent import run_agent
 from DummyAgent.DummyAgent import run_DummyAgent
 import matplotlib.pyplot as plt
-from multiprocessing import Semaphore
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -49,6 +49,8 @@ def main():
     hidden_dim = 64
     weights_path = PROJECT_ROOT / f"Agents/Agent/{params['n_O_agents']}v{params['n_D_agents']}.pt"
     Eval_flag = mp.Value('b', False) #Flag to signal agents to start evaluation episodes
+   
+    
 
     Eval_time_steps = params["Eval_every_x_time_steps"] #Number of time steps between evaluations during training
     Eval_interval = params["Eval_interval"] #Number of episodes to average over during evaluation
@@ -83,6 +85,7 @@ def main():
     if logging:
         run_dir, metrics = file_manager.init_run_logging(PROJECT_ROOT, params)
 
+
     if training:
         model = QMIX(obs_dim,state_dim,n_agent,n_actions)
         target_model = QMIX(obs_dim,state_dim,n_agent,n_actions)
@@ -96,7 +99,6 @@ def main():
         TD_target_buffer_mean = []
         Gradient_norms = []
         barrier = mp.Barrier(n_agent + 1) # +1 for main process
-        Debug_semaphore = Semaphore(1) # CAN REMOVE LATER
         replay_buffer = ReplayBuffer(num_of_episodes=1000)
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
         loss_plt_start = 0
@@ -128,7 +130,8 @@ def main():
             epsilon,
             Eval_flag,
             Eval_interval,
-            plotting if training else None)) 
+            plotting if training else None,
+            run_dir)) 
         # p = mp.Process(target=run_DummyAgent, args=())
         p.start()
         processes.append(p)
@@ -235,29 +238,29 @@ def main():
                 gradiend_norm = learner_utils.backprop(model, optimizer, loss, max_grad_norm=max_grad)
                 Gradient_norms.append(gradiend_norm)
 
-                if plotting and training_step % 25 == 0:
+                if plotting and training_step % 100 == 0:
                     if training_step % 1000 == 0 and len(losses) > 1000:
                         loss_plt_start = len(losses) - 1000
                     plt.clf()
                     plt.xlabel("EPISODE")
                     plt.plot(range(loss_plt_start, loss_plt_start + len(losses[loss_plt_start:])), losses[loss_plt_start:])
-                    plt.savefig("plots/loss.png")
+                    plt.savefig(run_dir / "loss.png")
                     plt.clf()
                     plt.xlabel("EPISODE")
                     plt.plot(Q_tot_buffer_mean)
-                    plt.savefig("plots/Q_tot_mean.png")
+                    plt.savefig(run_dir / "Q_tot_mean.png")
                     plt.clf()
                     plt.xlabel("EPISODE")
                     plt.plot(Q_tot_buffer_max_abs)
-                    plt.savefig("plots/Q_tot_max_abs.png")
+                    plt.savefig(run_dir / "Q_tot_max_abs.png")
                     plt.clf()
                     plt.xlabel("EPISODE")
                     plt.plot(TD_target_buffer_mean)
-                    plt.savefig("plots/TD_target_mean.png")
+                    plt.savefig(run_dir / "TD_target_mean.png")
                     plt.clf()
                     plt.xlabel("EPISODE")
                     plt.plot(Gradient_norms)
-                    plt.savefig("plots/Gradient_norms.png")
+                    plt.savefig(run_dir / "Gradient_norms.png")
 
                 if epsilon.value > epsilon_min:
                     epsilon.value -= epsilon_decay

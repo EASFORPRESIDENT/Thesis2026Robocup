@@ -93,8 +93,9 @@ def run_agent(
         Epsilon = 0,
         Eval=False, 
         Eval_interval=50,
-        plotting = True
-        ): #CAN REMOVE DEBUG_BARRIER LATER
+        plotting = True,
+        run_path = None
+    ): 
     #args = parse_args()
 
     hidden_dim = 64      # samma som i träningen
@@ -211,11 +212,11 @@ def run_agent(
                     plt.plot(Avrage_time_per_eval, label = "Time Out")
                     plt.plot(Avrage_bounds_per_eval, label = "Out Of bounds")
                     plt.legend()
-                    plt.savefig("Avrage_goals_per_eval.png")
+                    plt.savefig(run_path / "Avrage_goals_per_eval.png")
 
                     if training:
                         if nr_goals_per_eval / Eval_interval > eval_max:
-                            torch.save(agent_network.state_dict(), WEIGHTS_PATH) 
+                            torch.save(agent_network.state_dict(), run_path / "agent_weights.pth") 
                             eval_max = nr_goals_per_eval / Eval_interval
 
                 
