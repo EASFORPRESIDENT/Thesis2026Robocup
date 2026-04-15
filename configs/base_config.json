@@ -4,7 +4,7 @@
   "training": true,
   "logging": true,
   "plotting": true,
-  "duration": 30000,
+  "duration": 60000,
   "learning_rate": 3e-5,
   "min_learning_rate": 1e-5,
   "learning_rate_decay": 0.90,
@@ -21,6 +21,6 @@
   "duplicate_positive_episodes": true,
   "max_duplication": 20,
   "duplication_scale_factor": 20,
-  "Eval_every_x_time_steps":  500, 
-  "Eval_interval" : 100
+  "Eval_every_x_time_steps":  750, 
+  "Eval_interval" : 200
 }

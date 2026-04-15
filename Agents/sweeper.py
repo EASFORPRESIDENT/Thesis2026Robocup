@@ -55,7 +55,9 @@ def main():
             "max_grad_norm":                random.choice(params["max_grad_norm"]) if isinstance(params["max_grad_norm"], Sequence) else params["max_grad_norm"],
             "duplicate_positive_episodes":  random.choice(params["duplicate_positive_episodes"]) if isinstance(params["duplicate_positive_episodes"], Sequence) else params["duplicate_positive_episodes"],
             "max_duplication":              random.choice(params["max_duplication"]) if isinstance(params["max_duplication"], Sequence) else params["max_duplication"],
-            "duplication_scale_factor":     random.choice(params["duplication_scale_factor"]) if isinstance(params["duplication_scale_factor"], Sequence) else params["duplication_scale_factor"]
+            "duplication_scale_factor":     random.choice(params["duplication_scale_factor"]) if isinstance(params["duplication_scale_factor"], Sequence) else params["duplication_scale_factor"],
+            "Eval_every_x_time_steps":      random.choice(params["Eval_every_x_time_steps"]) if isinstance(params["Eval_every_x_time_steps"], Sequence) else params["Eval_every_x_time_steps"],
+            "Eval_interval":                random.choice(params["Eval_interval"]) if isinstance(params["Eval_interval"], Sequence) else params["Eval_interval"]
         }
         save_params(trial_params, RUN_CONFIG)
         print(f"\n=== Starting trial {trial + 1}/{num_trials} ===")
@@ -71,7 +73,7 @@ def main():
                 f"--defense-npcs={trial_params['n_D_agents']}",
                 "--port=6000",
                 "--headless",
-                "--fullstate"
+               
             ]
 
             hfo_process = subprocess.Popen(

@@ -198,7 +198,8 @@ def run_agent(
                 Eval_episode += 1
         
         if Eval_episode == Eval_interval:
-                    Avrage_goals_per_eval.append(nr_goals_per_eval / Eval_interval)
+                    eval_goal_rate = nr_goals_per_eval / Eval_interval
+                    Avrage_goals_per_eval.append(eval_goal_rate)
                     Avrage_capture_per_eval.append(nr_capture_per_eval/Eval_interval)
                     Avrage_time_per_eval.append(nr_out_of_time_per_eval/Eval_interval)
                     Avrage_bounds_per_eval.append(nr_out_bounds_per_eval/Eval_interval)
@@ -215,9 +216,9 @@ def run_agent(
                     plt.savefig(run_path / "Avrage_goals_per_eval.png")
 
                     if training:
-                        if nr_goals_per_eval / Eval_interval > eval_max:
+                        if eval_goal_rate > eval_max:
                             torch.save(agent_network.state_dict(), run_path / "agent_weights.pth") 
-                            eval_max = nr_goals_per_eval / Eval_interval
+                            eval_max = eval_goal_rate
 
                 
                     nr_goals_per_eval = 0
