@@ -20,5 +20,7 @@
   "max_grad_norm": 5,
   "duplicate_positive_episodes": true,
   "max_duplication": 20,
-  "duplication_scale_factor": 20
+  "duplication_scale_factor": 20,
+  "Eval_every_x_time_steps":  500, 
+  "Eval_interval" : 100
 }
