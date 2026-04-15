@@ -91,7 +91,8 @@ def run_agent(
         training : bool,
         n_actions,
         Epsilon = 0,
-        Debug_semaphore = None,
+        Eval=False, 
+        Eval_interval=50,
         plotting = True
         ): #CAN REMOVE DEBUG_BARRIER LATER
     #args = parse_args()
@@ -114,12 +115,16 @@ def run_agent(
     n_teammates = env.getNumTeammates()
     n_opponents = env.getNumOpponents()
     plt.ion()
-    Episodes_since_last_goal = []
-    Avrage_goals_per_episodes = []
-    plt_start = 0
-    plt_start2 = 0
-    nr_episodes_since_last_goal = 0
-    nr_goals_per_episodes = 0
+    Avrage_goals_per_eval = []
+    Avrage_capture_per_eval = []
+    Avrage_time_per_eval = []
+    Avrage_bounds_per_eval = []
+    nr_goals_per_eval = 0
+    nr_capture_per_eval = 0
+    nr_out_of_time_per_eval = 0
+    nr_out_bounds_per_eval = 0
+    Eval_episode = 0
+    eval_max = 0
  
     for episode in itertools.count():
         if stop_event.is_set():
@@ -141,7 +146,7 @@ def run_agent(
                 temmate_pass_unums, opponent_mark_unums,action_mask = get_action_mask(n_actions, n_teammates, n_opponents, obs)
                 masked_q_values = masked_q_values.masked_fill(~action_mask.unsqueeze(0), float('-inf')) # Mask out invalid actions
 
-                if training:
+                if training and not Eval.value:
                     eps = Epsilon.value
                     #print(f"Episode {episode}, Epsilon {eps:.3f}") #Debug print
                     action_idx = select_action(masked_q_values, eps) # Epsilon-greedy action selection
@@ -154,7 +159,7 @@ def run_agent(
 
             status = env.step()
             
-            if training:
+            if training and not Eval.value:
                     transitions.save_transition(
                     obs,
                     int(action_idx.item()),
@@ -168,39 +173,64 @@ def run_agent(
         #print(f"Episode {episode} ended with {env.statusToString(status)}")
         
         if training:
-            transitions.done()
-            queue.put(transitions) #Send episode to main process for backpropagation
+            if not Eval.value:
+                transitions.done()
+                queue.put(transitions) #Send episode to main process for backpropagation
             barrier.wait() #Wait untill all agents finish and start backpropagation
             barrier.wait() #Wait untill backpropagation finished
             transitions.reset()
         
-        if agent_id == 0:
-            if episode % 50 == 0:
-                Avrage_goals_per_episodes.append(nr_goals_per_episodes / 50)
-                nr_goals_per_episodes = 0
+        if agent_id == 0 and Eval.value:
+                print(f"Evaluation episode {Eval_episode} ended with {env.statusToString(status)}")
+                if status == hfo.GOAL:
+                    nr_goals_per_eval += 1
 
-            if status == hfo.GOAL:
-                Episodes_since_last_goal.append(nr_episodes_since_last_goal)
-                nr_goals_per_episodes += 1
-                nr_episodes_since_last_goal = 0
-            else:
-                nr_episodes_since_last_goal += 1
-            if episode % 50 == 0:
-                if len(Episodes_since_last_goal) % 100 == 0:
-                    plt_start = len(Episodes_since_last_goal) - 100
+                elif status == hfo.OUT_OF_BOUNDS:
+                    nr_out_bounds_per_eval += 1
 
-                if len(Avrage_goals_per_episodes) % 100 == 0:
-                    plt_start2 = len(Avrage_goals_per_episodes) - 100
+                elif status == hfo.OUT_OF_TIME:
+                    nr_out_of_time_per_eval += 1
 
-                if plotting:
+                elif status == hfo.CAPTURED_BY_DEFENSE:
+                    nr_capture_per_eval += 1
+
+                Eval_episode += 1
+        
+        if Eval_episode == Eval_interval:
+                    Avrage_goals_per_eval.append(nr_goals_per_eval / Eval_interval)
+                    Avrage_capture_per_eval.append(nr_capture_per_eval/Eval_interval)
+                    Avrage_time_per_eval.append(nr_out_of_time_per_eval/Eval_interval)
+                    Avrage_bounds_per_eval.append(nr_out_bounds_per_eval/Eval_interval)
+
+                        
                     plt.clf()
-                    plt.xlabel("EPISODE")
-                    plt.plot(range(plt_start, plt_start + len(Episodes_since_last_goal[plt_start:])), Episodes_since_last_goal[plt_start:])
-                    plt.savefig("plots/Episodes_since_goal.png")
-                    plt.clf()
-                    plt.xlabel("EPISODE")
-                    plt.plot(range(plt_start2, plt_start2 + len(Avrage_goals_per_episodes[plt_start2:])), Avrage_goals_per_episodes[plt_start2:])
-                    plt.savefig("plots/Avrage_goals_per_episodes.png")
+                    plt.xlabel("EVAL")
+                    plt.ylabel(f"Outcome rate , (avrage over {Eval_interval} episodes)")
+                    plt.plot(Avrage_goals_per_eval, label = "Goals")
+                    plt.plot(Avrage_capture_per_eval, label = "Captured by defence")
+                    plt.plot(Avrage_time_per_eval, label = "Time Out")
+                    plt.plot(Avrage_bounds_per_eval, label = "Out Of bounds")
+                    plt.legend()
+                    plt.savefig("Avrage_goals_per_eval.png")
+
+                    if training:
+                        if nr_goals_per_eval / Eval_interval > eval_max:
+                            torch.save(agent_network.state_dict(), WEIGHTS_PATH) 
+                            eval_max = nr_goals_per_eval / Eval_interval
+
+                
+                    nr_goals_per_eval = 0
+                    nr_out_of_time_per_eval = 0
+                    nr_capture_per_eval = 0
+                    nr_out_bounds_per_eval = 0
+                    Eval_episode = 0
+                    
+                    if training:
+                        Eval.value = False
+
+           
+        
+
 
         if status == hfo.SERVER_DOWN:
             env.act(hfo.QUIT)

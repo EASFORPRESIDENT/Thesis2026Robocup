@@ -271,8 +271,12 @@ def main():
                 metrics["best_avg_goal_rate"] = max(metrics["best_avg_goal_rate"], average_goal_rate)
                 metrics["epsilon"] = epsilon.value
                 metrics["learning_rate"] = learning_rate
-                
+
             training_step += 1
+
+            if training_step % Eval_time_steps == 0:
+                    Eval_flag.value = True
+                    print(f"Starting evaluation at training step {training_step} ") #Debug print
 
         else:
             print(f"Evaluating") #Debug print
