@@ -1,5 +1,5 @@
 {
-  "num_trials": 34,
+  "num_trials": 1,
   "parameters": {
     "n_O_agents": 2,
     "n_D_agents": 1,
@@ -7,23 +7,23 @@
     "logging": true,
     "plotting": true,
     "duration": 60000,
-    "learning_rate": [0.0003, 0.0005],
+    "learning_rate": 0.0005, 
     "min_learning_rate": 1e-5,
     "learning_rate_decay": 0.90,
     "epsilon_start": 1.0,
     "epsilon_min": 0.05,
-    "epsilon_decay": [5e-5, 2e-5],
-    "number_of_samples": [16, 32, 64],
-    "burn_in_steps": [5, 10],
-    "training_steps": [8, 16],
-    "bootstrap_steps": [3, 5],
+    "epsilon_decay": 5e-5,
+    "number_of_samples": 32,
+    "burn_in_steps": 8,
+    "training_steps": 8,
+    "bootstrap_steps":  5,
     "discount_factor": 0.99,
-    "target_update_interval": [100, 200, 300],
+    "target_update_interval": [150, 250],
     "max_grad_norm": 5,
     "duplicate_positive_episodes": true,
     "max_duplication": 20,
     "duplication_scale_factor": 20,
-    "Eval_every_x_time_steps":  750, 
+    "Eval_every_x_time_steps":  1000, 
     "Eval_interval" : 200
   }
 }

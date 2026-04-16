@@ -47,7 +47,7 @@ def main():
     n_opponents = params["n_D_agents"]
     n_actions = 7 + (params["n_O_agents"]-1) + (params["n_D_agents"]) 
     hidden_dim = 64
-    weights_path = PROJECT_ROOT / f"Agents/Agent/{params['n_O_agents']}v{params['n_D_agents']}.pt"
+    weights_path = PROJECT_ROOT / "2v1_noicy_T2/.pt"
     Eval_flag = mp.Value('b', False) #Flag to signal agents to start evaluation episodes
    
     
@@ -111,7 +111,7 @@ def main():
 
     agent_net.share_memory()
     
-    #torch.save(model.agent_net.state_dict(), weights_path) #After training complete
+    
 
     processes = []
     queue = mp.Queue()
@@ -264,9 +264,10 @@ def main():
 
                 if epsilon.value > epsilon_min:
                     epsilon.value -= epsilon_decay
-                    if training_step % 25 == 0:
-                        print(f"Training step:  {training_step}, epsilon: {epsilon.value:.3f}") #Debug print
+                    
 
+            if training_step % 25 == 0:
+                print(f"Training step:  {training_step}, epsilon: {epsilon.value:.3f}") #Debug print
 
             if logging:
                 metrics["episodes"] += 1

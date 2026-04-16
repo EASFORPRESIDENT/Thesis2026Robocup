@@ -104,7 +104,7 @@ class QMIX(nn.Module):
         n_agents: int,
         n_actions: int,
         agent_hidden_dim: int = 64,
-        mixing_hidden_dim: int = 32
+        mixing_hidden_dim: int = 64
     ):
         super().__init__()
         self.n_agents = n_agents
