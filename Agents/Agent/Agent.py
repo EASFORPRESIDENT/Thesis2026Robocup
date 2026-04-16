@@ -48,13 +48,16 @@ def acting(action_choice ,temmate_pass_unums, opponent_mark_unums, env: hfo.HFOE
 
     elif action_choice > 6 and action_choice <= env.getNumTeammates() + 6:
         pass_to_unum = next((v for a, v in temmate_pass_unums if a == action_choice), None)
-        env.act(hfo.PASS, pass_to_unum) 
+        env.act(hfo.PASS, pass_to_unum)
+        return True
     
     elif action_choice > 6 + env.getNumTeammates():
         mark_who_unum = next((v for a, v in opponent_mark_unums if a == action_choice), None)
         env.act(hfo.MARK_PLAYER, mark_who_unum) 
     else:
         raise ValueError(f"Invalid action choice: {action_choice}")
+    
+    return False
 
 def select_action(q_values, epsilon):
     if random.random() < epsilon:
@@ -66,7 +69,7 @@ def select_action(q_values, epsilon):
     else:
         return torch.argmax(q_values, dim=-1)
 
-def reward_func(status):
+def reward_func(status,passed):
     if status == hfo.GOAL:
         return 5.0
     elif status == hfo.CAPTURED_BY_DEFENSE:
@@ -75,6 +78,8 @@ def reward_func(status):
         return -1.5
     elif status == hfo.OUT_OF_TIME:
         return -0.5
+    elif passed:
+        return 0.0
     else:
         return 0.0
 
@@ -96,9 +101,7 @@ def run_agent(
         plotting = True,
         run_path = None
     ): 
-    #args = parse_args()
-
-    hidden_dim = 64      # samma som i träningen
+    
 
     env = hfo.HFOEnvironment()
     env.connectToServer(
@@ -120,12 +123,14 @@ def run_agent(
     Avrage_capture_per_eval = []
     Avrage_time_per_eval = []
     Avrage_bounds_per_eval = []
+    Nr_passes_per_eval = []
     nr_goals_per_eval = 0
     nr_capture_per_eval = 0
     nr_out_of_time_per_eval = 0
     nr_out_bounds_per_eval = 0
     Eval_episode = 0
     eval_max = 0
+    nr_passes = 0
  
     for episode in itertools.count():
         if stop_event.is_set():
@@ -155,8 +160,10 @@ def run_agent(
                     action_idx = torch.argmax(masked_q_values, dim=-1) # Greedy action selection during evaluation
                     
                 #print(f"Agent {agent_id} chose action {action_idx.item()} with q-value {q_values[0][action_idx].item()} \n") #Debug print
-                acting(action_idx ,temmate_pass_unums, opponent_mark_unums, env)
-
+                passed = acting(action_idx ,temmate_pass_unums, opponent_mark_unums, env)
+            
+                if passed and Eval.value:
+                    nr_passes += 1
 
             status = env.step()
             
@@ -164,7 +171,7 @@ def run_agent(
                     transitions.save_transition(
                     obs,
                     int(action_idx.item()),
-                    reward_func(status),
+                    reward_func(status,passed),
                     t,
                     agent_id,
                     False
@@ -203,6 +210,7 @@ def run_agent(
                     Avrage_capture_per_eval.append(nr_capture_per_eval/Eval_interval)
                     Avrage_time_per_eval.append(nr_out_of_time_per_eval/Eval_interval)
                     Avrage_bounds_per_eval.append(nr_out_bounds_per_eval/Eval_interval)
+                    Nr_passes_per_eval.append(nr_passes)
 
                         
                     plt.clf()
@@ -215,6 +223,12 @@ def run_agent(
                     plt.legend()
                     plt.savefig(run_path / "Avrage_goals_per_eval.png")
 
+                    plt.clf()
+                    plt.xlabel("EVAL")
+                    plt.ylabel("Nr of passes")
+                    plt.plot(Nr_passes_per_eval)
+                    plt.savefig(run_path / "Passes_per_eval.png")
+
                     if training:
                         if eval_goal_rate > eval_max:
                             torch.save(agent_network.state_dict(), run_path / "agent_weights.pth") 
@@ -226,6 +240,7 @@ def run_agent(
                     nr_capture_per_eval = 0
                     nr_out_bounds_per_eval = 0
                     Eval_episode = 0
+                    nr_passes = 0
                     
                     if training:
                         Eval.value = False

@@ -39,10 +39,6 @@ class ReplayBuffer:
 
         joint_episode = []
         for transition in self.episode:
-            if transition["reward"] > 0 and not contains_positive_reward:
-                contains_positive_reward = True
-                #print(f"\033[32mINFO: Episode contains positive reward {transition['reward']} at timestep {transition['timestep']}\033[0m") #Debug print
-                #print(f"\033[32mINFO: Duplication factor for this episode: {positive_reward_duplication_factor}\033[0m") #Debug print
             timestep = transition["timestep"]
             timestep = transition["timestep"]
             agent_id = transition["agent_id"]
@@ -60,6 +56,11 @@ class ReplayBuffer:
             joint_episode[timestep]["actions"][agent_id] = transition["action"]
             joint_episode[timestep]["reward"][agent_id] = transition["reward"]
             joint_episode[timestep]["done"] = transition["done"]
+
+        if max(joint_episode[-1]["reward"]) > 0.5:
+            contains_positive_reward = True
+            print(f"\033[32mINFO: Episode contains positive reward {transition['reward']} at timestep {transition['timestep']}\033[0m") #Debug print
+            print(f"\033[32mINFO: Duplication factor for this episode: {positive_reward_duplication_factor}\033[0m") #Debug print
 
         for step in joint_episode:
             if any(obs is None for obs in step["observations"]):
@@ -107,8 +108,8 @@ class ReplayBuffer:
             return 0
         total_goals = 0
         for episode in list(self.real_buffer)[-num_episodes:]:
-            for transition in episode:
-                rewards = transition["reward"]
-                if any(reward > 0 for reward in rewards):
-                    total_goals += 1
+            final_transition = episode[-1]
+            rewards = final_transition["reward"]
+            if any(reward > 0.5 for reward in rewards):
+                total_goals += 1
         return total_goals / num_episodes

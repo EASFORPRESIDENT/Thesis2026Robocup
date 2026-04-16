@@ -47,7 +47,7 @@ def main():
     n_opponents = params["n_D_agents"]
     n_actions = 7 + (params["n_O_agents"]-1) + (params["n_D_agents"]) 
     hidden_dim = 64
-    weights_path = PROJECT_ROOT / "2v1_noicy_T2/.pt"
+    weights_path = PROJECT_ROOT / "log/run_1776341363/agent_weights.pth"
     Eval_flag = mp.Value('b', False) #Flag to signal agents to start evaluation episodes
    
     
@@ -64,6 +64,7 @@ def main():
     learning_rate_decay = params["learning_rate_decay"]
     min_learning_rate = params["min_learning_rate"]
     max_grad = params["max_grad_norm"]
+    target_update_interval = params["target_update_interval"]
     training_step = 0
    
     number_of_samples = params["number_of_samples"] # Number of samples to use for each training iteration, i.e. number of time steps to sample from replay buffer for training per training iteration, set to 1 to train on one time step at a time, set to higher value to train on multiple time steps at once (e.g. 32 for batch training)
@@ -108,6 +109,7 @@ def main():
         state_dict = torch.load(weights_path, map_location="cpu")
         agent_net.load_state_dict(state_dict)
         agent_net.eval()
+        Eval_flag.value = True
 
     agent_net.share_memory()
     
@@ -123,7 +125,7 @@ def main():
             i,
             agent_net,
             queue,
-            barrier,
+            barrier if training else None,
             stop_event,
             training,
             n_actions,
@@ -156,7 +158,7 @@ def main():
                     print(f"Updated learning rate to {learning_rate:.8f}")
                 
 
-            if training_step % 100 == 0:
+            if training_step % target_update_interval == 0:
                 target_mixer_net.load_state_dict(mixer_net.state_dict())
                 target_agent_net.load_state_dict(agent_net.state_dict())
 
@@ -164,7 +166,8 @@ def main():
             for i in range(n_agent):
                 sub_episode = queue.get()
                 replay_buffer.extend_episode(sub_episode)
-            average_goal_rate = replay_buffer.get_average_goal_rate(num_episodes=100)
+            average_goal_rate = replay_buffer.get_average_goal_rate(num_episodes=500)
+            print(f"Avrage Goalrate: {average_goal_rate:.5f}")
 
             # Duplicate episodes with positive rewards
             num_duplications = min(
