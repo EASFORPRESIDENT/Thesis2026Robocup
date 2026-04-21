@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 import time
 import matplotlib.pyplot as plt
+from collections import Counter
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(PROJECT_ROOT))
@@ -23,35 +24,44 @@ from Library.learner_utils import get_action_mask
 HFO_ROOT = PROJECT_ROOT / "HFO"
 FORMATIONS_PATH = HFO_ROOT / "bin/teams/base/config/formations-dt"
 
-def acting(action_choice ,temmate_pass_unums, opponent_mark_unums, env: hfo.HFOEnvironment):
-
+def acting(action_choice ,temmate_pass_unums, opponent_mark_unums, env: hfo.HFOEnvironment, agent_id):
+    
     if action_choice == 0:
+        #print(f"Agent {agent_id}: MOVE")
         env.act(hfo.MOVE)
 
     elif action_choice == 1:
+        #print(f"Agent {agent_id}: SHOOT")
         env.act(hfo.SHOOT)
 
     elif action_choice == 2:
+        #print(f"Agent {agent_id}: DRIBBLE")
         env.act(hfo.DRIBBLE)
     
     elif action_choice == 3: 
+        #print(f"Agent {agent_id}: NO-OP")
         env.act(hfo.NOOP)
     
     elif action_choice == 4:
+        #print(f"Agent {agent_id}: REDUCE ANGLE")
         env.act(hfo.REDUCE_ANGLE_TO_GOAL)
     
     elif action_choice == 5:
+        #print(f"Agent {agent_id}: GO TO BALL")
         env.act(hfo.GO_TO_BALL)
     
     elif action_choice == 6:
+        #print(f"Agent {agent_id}: REORIENT")
         env.act(hfo.REORIENT)
 
     elif action_choice > 6 and action_choice <= env.getNumTeammates() + 6:
+        #print(f"Agent {agent_id}: PASS")
         pass_to_unum = next((v for a, v in temmate_pass_unums if a == action_choice), None)
         env.act(hfo.PASS, pass_to_unum)
         return True
     
     elif action_choice > 6 + env.getNumTeammates():
+        #print(f"Agent {agent_id}: MARK OPPONENT")
         mark_who_unum = next((v for a, v in opponent_mark_unums if a == action_choice), None)
         env.act(hfo.MARK_PLAYER, mark_who_unum) 
     else:
@@ -69,17 +79,15 @@ def select_action(q_values, epsilon):
     else:
         return torch.argmax(q_values, dim=-1)
 
-def reward_func(status,passed):
+def reward_func(status):
     if status == hfo.GOAL:
-        return 5.0
+        return 7.0/2
     elif status == hfo.CAPTURED_BY_DEFENSE:
-        return -4.0
+        return -2.0/2
     elif status == hfo.OUT_OF_BOUNDS:
-        return -1.5
+        return -2.5/2
     elif status == hfo.OUT_OF_TIME:
-        return -0.5
-    elif passed:
-        return 0.0
+        return -2.5/2
     else:
         return 0.0
 
@@ -131,7 +139,10 @@ def run_agent(
     Eval_episode = 0
     eval_max = 0
     nr_passes = 0
- 
+    action_distrobution = []
+    
+    
+
     for episode in itertools.count():
         if stop_event.is_set():
             print(f"Agent {agent_id} received stop signal. Exiting.")
@@ -139,9 +150,11 @@ def run_agent(
         status = hfo.IN_GAME
         t = 0
         hidden = agent_network.init_hidden(batch_agents=1, device="cpu")
+        
 
         while status == hfo.IN_GAME:
             obs = env.getState()
+            #print(f"sucess? {obs[len(obs)-2]}")
             obs_tensor = torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0)
             
 
@@ -158,9 +171,10 @@ def run_agent(
                     action_idx = select_action(masked_q_values, eps) # Epsilon-greedy action selection
                 else:
                     action_idx = torch.argmax(masked_q_values, dim=-1) # Greedy action selection during evaluation
+                    action_distrobution.append(action_idx.item())
                     
                 #print(f"Agent {agent_id} chose action {action_idx.item()} with q-value {q_values[0][action_idx].item()} \n") #Debug print
-                passed = acting(action_idx ,temmate_pass_unums, opponent_mark_unums, env)
+                passed = acting(action_idx ,temmate_pass_unums, opponent_mark_unums, env, agent_id)
             
                 if passed and Eval.value:
                     nr_passes += 1
@@ -171,7 +185,7 @@ def run_agent(
                     transitions.save_transition(
                     obs,
                     int(action_idx.item()),
-                    reward_func(status,passed),
+                    reward_func(status),
                     t,
                     agent_id,
                     False
@@ -211,6 +225,10 @@ def run_agent(
                     Avrage_time_per_eval.append(nr_out_of_time_per_eval/Eval_interval)
                     Avrage_bounds_per_eval.append(nr_out_bounds_per_eval/Eval_interval)
                     Nr_passes_per_eval.append(nr_passes)
+                    counts = Counter(action_distrobution)
+                    #print(type(counts))
+                    #print(list(counts.keys())[:10])
+                    #print(list(counts.values())[:10])
 
                         
                     plt.clf()
@@ -229,10 +247,19 @@ def run_agent(
                     plt.plot(Nr_passes_per_eval)
                     plt.savefig(run_path / "Passes_per_eval.png")
 
+                    plt.clf()
+                    plt.bar(counts.keys(), counts.values())
+                    plt.xlabel("action")
+                    plt.ylabel("Action occurance/per Eval")
+                    plt.savefig(run_path / "Action_distru.png")
+                    action_distrobution = []
+
                     if training:
                         if eval_goal_rate > eval_max:
                             torch.save(agent_network.state_dict(), run_path / "agent_weights.pth") 
                             eval_max = eval_goal_rate
+
+                        torch.save(agent_network.state_dict(), run_path / "current_weights.pth") 
 
                 
                     nr_goals_per_eval = 0

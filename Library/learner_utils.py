@@ -99,8 +99,10 @@ def get_action_mask(n_actions,n_temates,n_opponents, obs ):
 
     else: # Has possession of the ball
             action_mask[0] = False # Can't move if in possession of the ball
+            action_mask[4] = False # Can't reduce angle to goal if in possession of the ball
             action_mask[5] = False # Can't go to ball if in possession of the ball
             action_mask[6] = False # Can't reorient if in possession of the ball
+            
             for i in range(0, n_temates): # Check if more than one teammate is in passing range
                 obs_index = teammate_start_idx + 3*i
                 action_index = 7 + i
@@ -109,6 +111,9 @@ def get_action_mask(n_actions,n_temates,n_opponents, obs ):
                 else:
                     temmate_pass_unums.append([action_index,obs[obs_index]]) # Add teammate's unum to list of passable teammates
 
+            for i in range(n_opponents):
+                action_index = 7 + n_temates + i
+                action_mask[action_index] = False # Can't mark opponent if in possession of the ball
 
      
     for i in range(0, n_opponents): # Check if opponents is in marking range
@@ -121,3 +126,5 @@ def get_action_mask(n_actions,n_temates,n_opponents, obs ):
             
 
     return temmate_pass_unums, opponent_mark_unums, action_mask
+
+
