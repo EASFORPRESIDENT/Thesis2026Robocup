@@ -8,6 +8,8 @@ import time
 import argparse
 from Agent.Agent import run_agent
 from DummyAgent.DummyAgent import run_DummyAgent
+from DummyAgent.DummyAgent_goalie import run_Goalie
+from DummyAgent.DummyAgent_defence import run_Defence
 import matplotlib.pyplot as plt
 
 
@@ -47,7 +49,13 @@ def main():
     n_opponents = params["n_D_agents"]
     n_actions = 7 + (params["n_O_agents"]-1) + (params["n_D_agents"]) 
     hidden_dim = 64
-    weights_path = PROJECT_ROOT / "log/run_1776341363/agent_weights.pth"
+
+
+
+    weights_path = PROJECT_ROOT / "log/run_1776778607/current_weights.pth"
+
+
+
     Eval_flag = mp.Value('b', False) #Flag to signal agents to start evaluation episodes
    
     
@@ -57,6 +65,7 @@ def main():
 
     
     training = params["training"]
+    base_training = params["base_training"]
     epsilon = mp.Value('d', params["epsilon_start"]) # Start value for epsilon-greedy action selection
     epsilon_min = params["epsilon_min"]
     epsilon_decay = params["epsilon_decay"]
@@ -95,13 +104,17 @@ def main():
         target_mixer_net = target_model.mixer
         agent_net = model.agent_net
         mixer_net = model.mixer
+
+        #state_dict = torch.load(weights_path, map_location="cpu")
+        #agent_net.load_state_dict(state_dict)
+
         losses = []
         Q_tot_buffer_mean = []
         Q_tot_buffer_max_abs = []
         TD_target_buffer_mean = []
         Gradient_norms = []
         barrier = mp.Barrier(n_agent + 1) # +1 for main process
-        replay_buffer = ReplayBuffer(num_of_episodes=1000)
+        replay_buffer = ReplayBuffer(num_of_episodes=1500, min_winrate=0.1)
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
         loss_plt_start = 0
         
@@ -135,10 +148,21 @@ def main():
             Eval_interval,
             plotting if training else None,
             run_dir)) 
-        # p = mp.Process(target=run_DummyAgent, args=())
+        
         p.start()
         processes.append(p)
         time.sleep(3) # Need this to avoid race condition
+
+    if base_training:
+        p = mp.Process(target=run_Goalie, args=())
+        p.start()
+        processes.append(p)
+        time.sleep(3) # Need this to avoid race condition
+        for i in range(n_opponents-1):
+            p = mp.Process(target=run_Defence, args=())
+            p.start()
+            processes.append(p)
+            time.sleep(3)
 
     # Main training loop
     while training:
@@ -157,6 +181,10 @@ def main():
                     for param_group in optimizer.param_groups:
                         param_group["lr"] = learning_rate
                     print(f"Updated learning rate to {learning_rate:.8f}")
+
+            # if training_step % 40000 == 0 and training_step > 0:
+            #     learning_rate = params["learning_rate"]*(0.6)
+            #     epsilon.value = 0.4
                 
 
             if training_step % target_update_interval == 0:
@@ -170,8 +198,8 @@ def main():
             for i in range(n_agent):
                 sub_episode = queue.get()
                 replay_buffer.extend_episode(sub_episode)
-            average_goal_rate = replay_buffer.get_average_goal_rate(num_episodes=500)
-            print(f"Avrage Goalrate: {average_goal_rate:.5f}")
+            average_goal_rate = replay_buffer.get_average_goal_rate(num_episodes=750, real=True)
+            
 
             # Duplicate episodes with positive rewards
             num_duplications = min(
@@ -179,17 +207,19 @@ def main():
             max(1, int(1 + (1.0 - average_goal_rate) * scale))
             ) * int(dupe)
 
+            def f(x, p=3):
+                x = max(0, min(0.18, x))   # clamp
+                return round(1 + 2 * (1 - x / 0.18) ** p)
 
-            replay_buffer.end_episode(num_duplications) # Prioritize episodes with positive reward in replay buffer by duplicating them.
+
+            replay_buffer.end_episode(max(1,f(average_goal_rate, 2))) # Prioritize episodes with positive reward in replay buffer by duplicating them.
             batch = replay_buffer.get_batch(num_of_samples=number_of_samples, sample_size=sample_size, extra_steps=bootstrap_time_steps) #Get batch of transitions for training
             
             # Collate batch of transitions into tensors for training
-            obs, states, actions, rewards, done = learner_utils.collate_batch(batch)
-            rewards = rewards[:, :, 0] # Shared reward for all agents, take reward of first agent in each transition
-            
-            # =========================== End of Get Batch ===========================
-            
+            obs, states, actions, rewards , done = learner_utils.collate_batch(batch)
+            rewards = rewards = rewards.sum(dim=-1)# Shared reward for all agents, take sum of reward in transition
 
+            # =========================== End of Get Batch ===========================
 
             if training_step > 200: #Only start training after enough transitions have been collected
             
@@ -334,7 +364,8 @@ def main():
                     
 
             if training_step % 25 == 0:
-                print(f"Training step:  {training_step}, epsilon: {epsilon.value:.3f}") #Debug print
+                print(f"Training step:  {training_step}, epsilon: {epsilon.value:.3f}, learning rate {learning_rate}") #Debug print
+                print(f"Avrage Goalrate: {average_goal_rate:.5f}")
 
             if logging:
                 metrics["episodes"] += 1
@@ -348,6 +379,9 @@ def main():
             if training_step % Eval_time_steps == 0:
                     Eval_flag.value = True
                     print(f"Starting evaluation at training step {training_step} ") #Debug print
+
+            if base_training and training_step % 20000 == 0:
+                training = False
 
         else:
             print(f"Evaluating") #Debug print

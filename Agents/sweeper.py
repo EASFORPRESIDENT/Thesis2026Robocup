@@ -37,6 +37,7 @@ def main():
             "n_O_agents":                   random.choice(params["n_O_agents"]) if isinstance(params["n_O_agents"], Sequence) else params["n_O_agents"],
             "n_D_agents":                   random.choice(params["n_D_agents"]) if isinstance(params["n_D_agents"], Sequence) else params["n_D_agents"],
             "training":                     random.choice(params["training"]) if isinstance(params["training"], Sequence) else params["training"],
+            "base_training":                random.choice(params["base_training"]) if isinstance(params["base_training"], Sequence) else params["base_training"],
             "logging":                      random.choice(params["logging"]) if isinstance(params["logging"], Sequence) else params["logging"],
             "plotting":                     random.choice(params["plotting"]) if isinstance(params["plotting"], Sequence) else params["plotting"],
             "duration":                     random.choice(params["duration"]) if isinstance(params["duration"], Sequence) else params["duration"],

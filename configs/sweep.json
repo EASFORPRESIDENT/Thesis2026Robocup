@@ -1,9 +1,10 @@
 {
-  "num_trials": 1,
+  "num_trials": 6,
   "parameters": {
     "n_O_agents": 2,
     "n_D_agents": 1,
     "training": true,
+    "base_training": true,
     "logging": true,
     "plotting": true,
     "duration": 60000,
@@ -19,7 +20,7 @@
     "training_steps": 8,
     "bootstrap_steps":  5,
     "discount_factor": 0.99,
-    "target_update_interval": [150, 250],
+    "target_update_interval": [150, 350,500],
     "max_grad_norm": 5,
     "duplicate_positive_episodes": true,
     "max_duplication": 20,
