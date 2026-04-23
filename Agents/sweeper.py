@@ -46,6 +46,7 @@ def main():
             "epsilon_start":                random.choice(params["epsilon_start"]) if isinstance(params["epsilon_start"], Sequence) else params["epsilon_start"],
             "epsilon_min":                  random.choice(params["epsilon_min"]) if isinstance(params["epsilon_min"], Sequence) else params["epsilon_min"],
             "epsilon_decay":                random.choice(params["epsilon_decay"]) if isinstance(params["epsilon_decay"], Sequence) else params["epsilon_decay"],
+            "auxiliary_loss_weight":        random.choice(params["auxiliary_loss_weight"]) if isinstance(params["auxiliary_loss_weight"], Sequence) else params["auxiliary_loss_weight"],
             "number_of_samples":            random.choice(params["number_of_samples"]) if isinstance(params["number_of_samples"], Sequence) else params["number_of_samples"],
             "burn_in_steps":                random.choice(params["burn_in_steps"]) if isinstance(params["burn_in_steps"], Sequence) else params["burn_in_steps"],
             "training_steps":               random.choice(params["training_steps"]) if isinstance(params["training_steps"], Sequence) else params["training_steps"],

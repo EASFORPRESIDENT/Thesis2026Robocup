@@ -1,10 +1,17 @@
 import torch
 import numpy as np
+import torch.nn.functional as F
 
-#        obs:     [t, n_samples, n_agents, obs_dim]
-#        states:  [t, n_samples, state_dim]
-#        actions: [t, n_samples, n_agents]
-#        rewards: [t, n_samples, n_agents]
+# obs:     [T, B, N, obs_dim]
+# states:  [T, B, state_dim]
+# actions: [T, B, N]
+# rewards: [T, B, N]
+
+# B = number of samples in batch
+# N = number of agents
+# A = number of actions
+# H = hidden dimension of agent network
+# T = number of time steps in sample (including burn-in and bootstrap time steps)
 
 # Assume state is not empty
 def collate_batch(batch):
@@ -61,14 +68,35 @@ def backprop(qmix, optimizer, loss, max_grad_norm):
     optimizer.step()
     return grad_norm
 
-def calc_q_vals_buffer(agent_net, obs, batch_length, N_AGENTS, SAMPLE_SIZE):
-    hidden = agent_net.init_hidden(batch_length * N_AGENTS, device=obs.device) # Initialize hidden state for all agents in batch, will be updated at each time step during training loop
+def aux_loss(n_actions: int,
+             pred: torch.Tensor,
+             true_actions: torch.Tensor,
+             valid_mask: torch.Tensor) -> torch.Tensor:
+    """
+    pred:         [B * N, N - 1, A]
+    true_actions: [B * N, N - 1]
+    valid_mask:   [B * N, N - 1]   True where target is valid
+    """
+    pred = pred.reshape(-1, n_actions)
+    true_actions = true_actions.reshape(-1)
+    valid_mask = valid_mask.reshape(-1)
+
+    ce = F.cross_entropy(pred, true_actions, reduction="none")
+    ce = ce[valid_mask]
+
+    if ce.numel() == 0:
+        return pred.new_tensor(0.0)
+
+    return ce.mean()
+
+def calc_q_vals_buffer(agent_net, obs, batch_length, n_agents, sample_size):
+    hidden = agent_net.init_hidden(batch_length * n_agents, device=obs.device) # Initialize hidden state for all agents in batch, will be updated at each time step during training loop
     q_vals_buffer = []
 
-    for t in range(SAMPLE_SIZE): # Unroll GRU and compute Q-values for all time steps in sample, store in buffer for later use in training loop
-        obs_flat = obs[t].reshape(batch_length * N_AGENTS, -1)
+    for t in range(sample_size): # Unroll GRU and compute Q-values for all time steps in sample, store in buffer for later use in training loop
+        obs_flat = obs[t].reshape(batch_length * n_agents, -1)
         q_values, hidden = agent_net(obs_flat, hidden)
-        q_values = q_values.reshape(batch_length, N_AGENTS, -1)
+        q_values = q_values.reshape(batch_length, n_agents, -1)
         q_vals_buffer.append(q_values)
 
     return q_vals_buffer
@@ -121,3 +149,67 @@ def get_action_mask(n_actions,n_temates,n_opponents, obs ):
             
 
     return temmate_pass_unums, opponent_mark_unums, action_mask
+
+def unroll_qmix(model, obs, states, actions):
+    """
+    obs:     [T, B, N, obs_dim]
+    states:  [T, B, state_dim]
+    actions: [T, B, N]
+
+    returns:
+        q_tot_buf:    [T, B]
+        all_q_buf:    [T, B, N, A]
+        chosen_q_buf: [T, B, N]
+        hidden_buf:   [T, B, N, H]
+        aux_buf:      depends on aux head
+    """
+    T, B, N, _ = obs.shape
+    hidden = model.init_hidden(B, device=obs.device)
+
+    q_tot_buf = []
+    all_q_buf = []
+    chosen_q_buf = []
+    aux_buf = []
+
+    for t in range(T):
+        q_tot_t, all_q_t, chosen_q_t, hidden, aux_t = model(
+            obs[t], states[t], actions[t], hidden
+        )
+
+        q_tot_buf.append(q_tot_t.squeeze(-1))          # [B]
+        all_q_buf.append(all_q_t)                      # [B, N, A]
+        chosen_q_buf.append(chosen_q_t)                # [B, N]
+
+        if aux_t.dim() == 2:
+            aux_t = aux_t.view(B, N, -1)               # [B, N, A]
+        elif aux_t.dim() == 3 and aux_t.shape[0] == B * N:
+            aux_t = aux_t.view(B, N, aux_t.shape[1], aux_t.shape[2])
+
+        aux_buf.append(aux_t)
+
+    return (
+        torch.stack(q_tot_buf, dim=0),
+        torch.stack(all_q_buf, dim=0),
+        torch.stack(chosen_q_buf, dim=0),
+        torch.stack(aux_buf, dim=0),
+    )
+
+def unroll_agent_net(agent_net, obs):
+    """
+    obs: [T, B, N, obs_dim]
+
+    returns:
+        q_buf:      [T, B, N, A]
+    """
+    T, B, N, _ = obs.shape
+    hidden = agent_net.init_hidden(B * N, device=obs.device)
+
+    q_buf = []
+
+    for t in range(T):
+        obs_flat = obs[t].reshape(B * N, -1)
+        q_flat, hidden = agent_net(obs_flat, hidden)
+
+        q_buf.append(q_flat.view(B, N, -1))
+
+    return torch.stack(q_buf, dim=0)

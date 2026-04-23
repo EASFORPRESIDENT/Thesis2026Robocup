@@ -1,7 +1,7 @@
 import sys
 import torch
 from pathlib import Path
-from Qmix.Qmix_base import QMIX, RecurrentAgentNetwork
+from Qmix.qmix_aux import QMIX, RecurrentAgentNetwork
 import torch.multiprocessing as mp
 import torch.nn.functional as F
 import time
@@ -73,6 +73,7 @@ def main():
     training_time_steps = params["training_steps"] # Number of time steps to train on during each training iteration
     sample_size = burn_in_time_steps + bootstrap_time_steps + training_time_steps
     discount_factor = params["discount_factor"]
+    auxiliary_loss_weight = params["auxiliary_loss_weight"]
     
     dupe = params["duplicate_positive_episodes"]
     dup_cap = params["max_duplication"] # Cap on how much to duplicate positive reward episodes in replay buffer to prevent overfitting to them, set to a high value to disable cap
@@ -162,6 +163,9 @@ def main():
                 target_mixer_net.load_state_dict(mixer_net.state_dict())
                 target_agent_net.load_state_dict(agent_net.state_dict())
 
+            
+            # ============================== Get Batch ===============================
+
             # Get episode data from queue and store in replay buffer
             for i in range(n_agent):
                 sub_episode = queue.get()
@@ -178,20 +182,40 @@ def main():
 
             replay_buffer.end_episode(num_duplications) # Prioritize episodes with positive reward in replay buffer by duplicating them.
             batch = replay_buffer.get_batch(num_of_samples=number_of_samples, sample_size=sample_size, extra_steps=bootstrap_time_steps) #Get batch of transitions for training
-            # Collate batch of transitions into tensors for training
             
             # Collate batch of transitions into tensors for training
-            obs, states, actions, rewards , done = learner_utils.collate_batch(batch)
-
+            obs, states, actions, rewards, done = learner_utils.collate_batch(batch)
             rewards = rewards[:, :, 0] # Shared reward for all agents, take reward of first agent in each transition
-            #Train model here using batch of transitions
+            
+            # =========================== End of Get Batch ===========================
+            
+
 
             if training_step > 200: #Only start training after enough transitions have been collected
             
-                q_vals_buffer = learner_utils.calc_q_vals_buffer(agent_net, obs, len(batch), n_agent, sample_size) #Compute Q-values for all time steps in sample (including burn-in) of online network
-                with torch.no_grad(): 
-                    target_q_vals_buffer = learner_utils.calc_q_vals_buffer(target_agent_net, obs, len(batch), n_agent, sample_size) #Compute target Q-values for all time steps in sample (including burn-in and bootstrap time steps) of target network
+                q_tot_online_buf, q_vals_buffer, _, aux_buffer = learner_utils.unroll_qmix(
+                    model, obs, states, actions
+                )
 
+                with torch.no_grad():
+                    target_q_vals_buffer = learner_utils.unroll_agent_net(
+                        target_agent_net, obs
+                    )
+
+                    masked_q = target_q_vals_buffer.clone()
+                    for t, _ in enumerate(target_q_vals_buffer):
+                        for a in range(n_agent):
+                            for b in range(number_of_samples):
+                                _, _, action_mask = learner_utils.get_action_mask(
+                                    n_actions, n_agent - 1, n_opponents, obs[t, b, a]
+                                )
+                                masked_q[t, b, a] = masked_q[t, b, a].masked_fill(
+                                    ~action_mask, float("-inf")
+                                )
+
+                    optimal_actions = torch.argmax(masked_q, dim=-1)   # [T, B, N]
+
+                # ======================== TD Target Calculation =========================
                 TD_target_buffer = torch.zeros(training_time_steps, number_of_samples, device=obs.device)
                 Q_tot_buffer = torch.zeros(training_time_steps, number_of_samples, device=obs.device)
                 
@@ -223,24 +247,64 @@ def main():
                         y_t = Future_reward + q_tot_target*mask[t+bootstrap_time_steps] # Compute target Q-values using rewards and discounted future Q-values
                         TD_target_buffer[t-burn_in_time_steps] = y_t  # Add TD target to buffer for training time steps
 
-                    chosen_q = torch.gather(q_vals_buffer[t], dim=2, index=actions[t].unsqueeze(-1)).squeeze(-1)
-                    Q_tot_buffer[t-burn_in_time_steps] = mixer_net(chosen_q, states[t]).squeeze()
+                    Q_tot_buffer[t - burn_in_time_steps] = q_tot_online_buf[t]
 
                 Mean_Q_tot = Q_tot_buffer.mean().item()
                 max_Q_tot = Q_tot_buffer.abs().max().item()
                 Mean_TD_target = TD_target_buffer.mean().item()
 
-                
-                loss = F.mse_loss(TD_target_buffer, Q_tot_buffer)
-                losses.append(loss.item())
+                # ===================== End of TD Target Calculation =====================
+                # ====================== Auxiliary Loss Calculation ======================
+
+                aux_buffer_training = aux_buffer[burn_in_time_steps:burn_in_time_steps + training_time_steps]
+                aux_loss = torch.tensor(0.0, device=obs.device)
+
+                # Compute auxiliary loss: for each training timestep, extract other agents' actions
+                # (excluding each agent's own action) and compare against auxiliary network predictions
+                for t, aux_t in enumerate(aux_buffer_training):
+                    # Get best action
+                    optimal_actions_t = optimal_actions[burn_in_time_steps + t + 1]  # [B, N]
+                    optimal_actions_expanded = optimal_actions_t.unsqueeze(1).expand(number_of_samples, n_agent, n_agent)  # [B, N, N]
+
+                    done_t = done[burn_in_time_steps + t]   # [B]
+                    valid_next = ~done_t                    # [B]
+
+                    valid_next = valid_next.unsqueeze(1).expand(number_of_samples, n_agent)   # [B, N]
+                    valid_next_expanded = valid_next.unsqueeze(1).expand(number_of_samples, n_agent, n_agent)
+
+                    self_mask = ~torch.eye(n_agent, dtype=torch.bool, device=obs.device)
+                    self_mask = self_mask.unsqueeze(0).expand(number_of_samples, -1, -1)
+
+                    valid_mask = valid_next_expanded[self_mask].view(number_of_samples * n_agent, n_agent - 1)
+                    true_actions = optimal_actions_expanded[self_mask].view(number_of_samples * n_agent, n_agent - 1)
+
+                    aux_loss += learner_utils.aux_loss(
+                        n_actions=n_actions,
+                        pred=aux_t,
+                        true_actions=true_actions,
+                        valid_mask=valid_mask
+                    )
+                aux_loss = aux_loss / training_time_steps
+                print(f"Auxiliary loss: {aux_loss.item():.4f}") #Debug print
+
+                # ================== End of Auxiliary Loss Calculation ===================
+                # =========================== Backpropagation ============================
+
+                # Compute loss and backpropagate
+                td_loss = F.mse_loss(TD_target_buffer, Q_tot_buffer)
+                total_loss = td_loss + auxiliary_loss_weight * aux_loss
+                losses.append(total_loss.item())
 
                 Q_tot_buffer_mean.append(Mean_Q_tot)
                 Q_tot_buffer_max_abs.append(max_Q_tot)
                 TD_target_buffer_mean.append(Mean_TD_target)
             
-                gradiend_norm = learner_utils.backprop(model, optimizer, loss, max_grad_norm=max_grad)
+                gradiend_norm = learner_utils.backprop(model, optimizer, total_loss, max_grad_norm=max_grad)
                 Gradient_norms.append(gradiend_norm)
 
+                # ======================== End of Backpropagation ========================
+
+                # Debug prints and plots
                 if plotting and training_step % 100 == 0:
                     if training_step % 1000 == 0 and len(losses) > 1000:
                         loss_plt_start = len(losses) - 1000

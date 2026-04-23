@@ -443,3 +443,4 @@ FodyWeavers.xsd
 *.png
 
 configs/trial_config.json
+configs/sweep.json

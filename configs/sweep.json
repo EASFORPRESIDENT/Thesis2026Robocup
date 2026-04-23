@@ -13,6 +13,7 @@
     "epsilon_start": 1.0,
     "epsilon_min": 0.05,
     "epsilon_decay": 5e-5,
+    "auxiliary_loss_weight": 0.25,
     "number_of_samples": 32,
     "burn_in_steps": 8,
     "training_steps": 8,
