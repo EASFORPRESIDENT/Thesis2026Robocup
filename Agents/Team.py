@@ -217,7 +217,7 @@ def main():
             
             # Collate batch of transitions into tensors for training
             obs, states, actions, rewards , done = learner_utils.collate_batch(batch)
-            rewards = rewards = rewards.sum(dim=-1)# Shared reward for all agents, take sum of reward in transition
+            rewards = rewards.sum(dim=-1)# Shared reward for all agents, take sum of reward in transition
 
             # =========================== End of Get Batch ===========================
 
